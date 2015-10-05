@@ -1,5 +1,13 @@
 /**
  ******************************************************************************
+ * @extended SparkPixels.ino - New modes:
+ *		ACID DREAM, COLOR BREATHE, COLOR PULSE, COLOR STRIPES, COLOR TRANSITION
+ *		FLICKER, POLICE LIGHTS, POLICE LIGHTS CHASER, POLICE LIGHTS WIPE, 
+ *		RAINBOW BURST, LISTENER
+ * @author   Werner Moecke
+ * @version  V1.0.2
+ * @date     24-September-2015 ~ 02-October-2015
+ *
  * @file     SparkPixels.ino
  * @authors  Kevin Carlborg
  * @version  V1.0.0
@@ -29,35 +37,55 @@
  ******************************************************************************/
  
 #include "neopixel/neopixel.h"
+#include <math.h>
 
 //NEOPIXEL Defines
-#define PIXEL_CNT 268
-#define PIXEL_PIN D7
+#define PIXEL_CNT 512
+#define PIXEL_PIN D0
 #define PIXEL_TYPE WS2812B
 
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(PIXEL_CNT, PIXEL_PIN, PIXEL_TYPE);
 
 /* ======================= ADD NEW MODE ID HERE. ======================= */
 // Mode ID Defines
-const int OFF 			= 0;
-const int NORMAL 		= 1;
-const int COLORALL 		= 2;
-const int CHASER		= 3;
-const int ZONE			= 4;
-const int COLORWIPE 	= 5;
-const int CYCLEWIPE		= 6;
-const int STROBE		= 7;
-const int RAINBOW		= 8;
-const int THEATERCHASE	= 9;
-const int FROZEN		= 10;
-const int COLLIDE		= 11;
- 
+const int STANDBY                     = 0;
+const int NORMAL                      = 1;
+const int COLORALL                    = 2;
+const int CHASER                      = 3;
+const int ZONE                        = 4;
+const int COLORPULSE                  = 5;
+const int COLORSTRIPES                = 6;
+const int ACIDDREAM                   = 7;
+const int COLORWIPE                   = 8;
+const int STROBE                      = 9;
+const int RAINBOW                     = 10;
+const int THEATERCHASE                = 11;
+const int FROZEN                      = 12;
+const int COLLIDE                     = 13;
+const int COLORFADE                   = 14;
+const int RAINBOW_BURST               = 15;
+const int FLICKER                     = 16;
+const int COLORBREATHE                = 17;
+const int POLICELIGHTS                = 18;
+const int POLICELIGHTSWIPE            = 19;
+const int POLICELIGHTSONE             = 20;
+const int LISTENER                    = 21;
+
 typedef struct modeParams
 {
    int 	 modeId;
    char  modeName[64];
    int   numOfColors;       //Tell the android app home many colors to expect. Max number is 6
 } modeParams;
+
+/**   An RGB color. */
+typedef struct Color
+{
+  unsigned char red, green, blue;
+
+  Color(int r, int g, int b) : red(r), green(g), blue(b) {}
+  Color() : red(0), green(0), blue(0) {}
+} Color;
 
 /* ======================= ADD NEW MODE STRUCT HERE. ======================= */
 //modeId and modeName should be the same name to prevent confusion
@@ -67,29 +95,39 @@ typedef struct modeParams
 modeParams modeStruct[] =
 {
     /*     modeId       	modeName 		numOfColors
-     *     ------------- 	-------------	---- */
-        {  OFF,             "OFF",          0   },
-        {  NORMAL,          "NORMAL",       0   },
-        {  COLORALL,        "COLORALL",     1   },
-        {  CHASER,          "CHASER",       1   },
-        {  ZONE,            "ZONE",         4   },
-        {  COLORWIPE,       "COLORWIPE",    1   },
-        {  CYCLEWIPE,       "CYCLEWIPE",    0   },
-        {  STROBE,          "STROBE",       1   },
-        {  RAINBOW,         "RAINBOW",      0   },
-        {  THEATERCHASE,    "THEATERCHASE", 0   },
-        {  FROZEN,          "FROZEN",       0   },
-        {  COLLIDE,         "COLLIDE",      0   }
+     *     ------------- 	---------------	----------- */
+        {  STANDBY,                     "STANDBY",              0   },
+        {  NORMAL,                      "INCANDESCENT",         0   },
+        {  ACIDDREAM,                   "ACID DREAM",           0   },
+        {  COLLIDE,                     "COLLIDE",              0   },
+        {  COLORBREATHE,                "COLOR BREATHE",        0   },
+        {  COLORPULSE,                  "COLOR PULSE",          0   },
+        {  COLORSTRIPES,                "COLOR STRIPES",        0   },
+        {  COLORFADE,                   "COLOR TRANSITION",     0   },
+        {  COLORWIPE,                   "COLOR WIPE",           0   },
+        {  CHASER,                      "CHASER",               1   },
+        {  COLORALL,                    "COLOR ALL",            1   },
+        {  FLICKER,                     "FLICKER",              1   },
+        {  STROBE,                      "STROBE",               1   },
+        {  FROZEN,                      "FROZEN",               0   },
+        {  LISTENER,                    "LISTENER",             0   },
+        {  POLICELIGHTS,                "POLICE LIGHTS",        0   },
+        {  POLICELIGHTSONE,             "POLICE LIGHTS CHASER", 0   },
+        {  POLICELIGHTSWIPE,            "POLICE LIGHTS WIPE",   0   },
+        {  RAINBOW,                     "RAINBOW",              0   },
+        {  RAINBOW_BURST,               "RAINBOW BURST",        0   },
+        {  THEATERCHASE,                "THEATER CHASE",	    0   },
+        {  ZONE,                        "ZONE",				    4   }
 };
 
 //Preset speed constants
 const int speedPresets[] = { 120, 100, 80, 70, 50, 30, 20, 10, 1};  //in mSec, slow to fast       
 
 //Temp Sensor constants	
-double refVoltage = 3.3;    //Voltage used as reference for analogRead
-double MINFANTEMP = 100.0;  //Min Temp to turn fan on low speed in Deg Fahrenheit
-double MAXFANTEMP = 115.0;  //Max Temp to turn fan on max speed in Deg Fahrenheit
-double MAXTEMP = 140.0;     //Shut Off Temp in Deg Fahrenheit
+//double refVoltage = 3.3;    //Voltage used as reference for analogRead
+//double MINFANTEMP = 100.0;  //Min Temp to turn fan on low speed in Deg Fahrenheit
+//double MAXFANTEMP = 115.0;  //Max Temp to turn fan on max speed in Deg Fahrenheit
+//double MAXTEMP = 140.0;     //Shut Off Temp in Deg Fahrenheit
 
 //Time Interval constants               hh*mm*ss*ms    
 unsigned long oneMinuteInterval =     1*60*1000;	//Read temp every minute
@@ -113,83 +151,120 @@ uint32_t color3;
 uint32_t color4;
 uint32_t color5;
 uint32_t color6;
+uint32_t c1, c2;
 
 //Spark Pin Defines
-int FAN_PIN = A0;           //There is a fan in the project box in case it gets too hot in thee=re
-int TEMP_SENSOR_PIN = A7;   //TMP36 sensor on this pin.
+//int FAN_PIN = A0;           //There is a fan in the project box in case it gets too hot in thee=re
+//int TEMP_SENSOR_PIN = A7;   //TMP36 sensor on this pin.
 
 //Spark Cloud Variables
-int wifi = 0;   //used for general info and setup
-int tHour=0;    //used for general info and setup
+int wifi = 0;   					//used for general info and setup
+int tHour=0;    					//used for general info and setup
 int speedIndex;     				//Let the cloud know what speed preset we are using
 int brightness;                     //How bright do we want these things anyway
-double measuredTemperature = 0.0;   //Let's see how hot our project box is getting since is has the power supply in there
-char modeList[622] = "None";	//Holds all mode info comma delimited. Use this to populate the android app
+//double measuredTemperature = 0.0;   //Let's see how hot our project box is getting since is has the power supply in there
+char modeList[622] = "None";		//Holds all mode info comma delimited. Use this to populate the android app
 char currentModeName[64] = "None";  //Holds current selected mode
 char debug[200];                    //We might want some debug text for development
+#define TIME_ZONE_OFFSET	-3		//The offset to obtain your region's time correctly
 
 /* ======================= mode Specific Defines ======================= */
 //ZONE mode Start and End Pixels
 int zone1Start = 0;
-int zone1End   = 59;
-int zone2Start = 60;
-int zone2End   = 141;
-int zone3Start = 142;
-int zone3End   = 219;
-int zone4Start = 220;
-int zone4End   = 267;
+int zone1End   = (PIXEL_CNT / 4) - 1;   //127
+int zone2Start = zone1End + 1;          //128
+int zone2End   = (zone2Start * 2) - 1;  //255
+int zone3Start = PIXEL_CNT / 2;         //256
+int zone3End   = zone3Start + zone1End; //383
+int zone4Start = zone3End + 1;          //384
+int zone4End   = PIXEL_CNT;             //512
 
 //CHASER mode specific Start and End Pixels, re-use some from ZONE mode
-int ChaserZone3Section1End   = 177;
-int chaserZone3Section2Start = 189;
-#define CHASER_LENGTH   256
+//int ChaserZone3Section1End   = 177;
+//int chaserZone3Section2Start = 189;
+#define CHASER_LENGTH		 PIXEL_CNT
 
 //FROZEN mode defines
 int randomFlakes[(int)(PIXEL_CNT*0.1)]; // holds the snowflake positions no more than10% of total number of pixels
+Color snowFlakeColor;
 
+//LISTENER mode defines
+UDP Udp;    //an UDP instance to let us receive packets over UDP
+//some tpm2.net constants
+#define TPM2NET_LISTENING_PORT  65506
+#define TPM2NET_HEADER_SIZE     6
+#define TPM2NET_HEADER_IDENT    0x9C
+#define TPM2NET_CMD_DATAFRAME   0xDA
+#define TPM2NET_CMD_COMMAND     0xC0
+#define TPM2NET_CMD_ANSWER      0xAC
+#define TPM2NET_FOOTER_IDENT    0x36
+#define TPM2NET_PACKET_TIMEOUT  0xFA    // 1/4 of a second
+#define NR_OF_PANELS            8       // 8x8x8 Cube
+#define PIXELS_PER_PANEL        (strip.numPixels() / NR_OF_PANELS)
+#define BPP                     3       // 3 bytes per pixel or 24bit (RGB)
+// Package size we expect. The footer byte is not included here!
+#define EXPECTED_PACKED_SIZE    (PIXELS_PER_PANEL * BPP + TPM2NET_HEADER_SIZE)
 /* ======================= Required Prototypes =============================== */
+int showPixels(void);
+int antipodal_index(int i);
 int setNewMode(int newMode);
-int getModeIndexFromName(String name);
 int getModeIndexFromID(int id);
 int isValidMode(String newMode);
-int getTemperature(void);
-int showPixels(void);
+int getModeIndexFromName(String name);
+//int getTemperature(void);
+void fadeInToColor(uint32_t index, Color col);
+void fadeOutFromColor(uint32_t index, Color col);
 uint32_t Wheel(byte WheelPos);
+uint32_t getHighestValFromRGB(Color col);
+uint32_t lerpColor(uint32_t c1, uint32_t c2, uint32_t val, uint32_t minVal, uint32_t maxVal);
+Color getPixelColor(uint32_t index);
+Color getColorFromInteger(uint32_t col);
 
 /* ======================= Spark Pixel Prototypes =============================== */
 int colorAll(uint32_t c);
-int colorZone(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4);
 int colorWipe(uint32_t c);
-void colorChaser(uint32_t c);
-void strobe(uint32_t color);
-void rainbow(void);
-void rainbowCycle(void) ;
-void theaterChaseRainbow(void);
-void cycleWipe(void);
+int colorZone(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4);
+void listen(void);
 void frozen(void);
-void setRandomSnowFlakes(int numFlakes);
-void findRandomSnowFlakesPositions(int numFlakes);
+void rainbow(void);
 void collide(void);
+void cycleLerp(void);
+void cycleWipe(void);
+void color_fade(void);
+void colorPulse(void);
+void colorStripes(void);
+void rainbowCycle(void);
+void random_burst(void);
+void flicker(uint32_t c);
+void police_lightsONE(void);
+void police_lightsALL(void);
+void strobe(uint32_t color);
+void colorChaser(uint32_t c);
+void pulse_oneColorAll(void);
+void police_light_strobo(void);
+void theaterChaseRainbow(void);
+void findRandomSnowFlakesPositions(int numFlakes);
 
+//DISABLED, AS IT INTERFERES WITH UDP LISTENING, PLUS IT IS NO LONGER NECESSARY ON THE PHOTON
 //Don't connect to the cloud first so we can turn on the lights right away
-SYSTEM_MODE(SEMI_AUTOMATIC);   
+//SYSTEM_MODE(SEMI_AUTOMATIC);   
 
 void setup() {
-    Spark.function("SetMode", SetMode);
-    Spark.variable("wifi",          &wifi,                  INT);
-    Spark.variable("tHour",         &tHour,                 INT);
-    Spark.variable("speed",         &speedIndex,            INT);
-    Spark.variable("brightness",    &brightness,            INT);
-    Spark.variable("temp",          &measuredTemperature,   DOUBLE);
-	Spark.variable("modeList",      &modeList,              STRING);
-	Spark.variable("mode",          &currentModeName,       STRING);
-    Spark.variable("debug",         &debug,                 STRING);
+    Particle.function("SetMode", SetMode);
+    Particle.variable("wifi",          &wifi,                  INT);
+    Particle.variable("tHour",         &tHour,                 INT);
+    Particle.variable("speed",         &speedIndex,            INT);
+    Particle.variable("brightness",    &brightness,            INT);
+    //Particle.variable("temp",          &measuredTemperature,   DOUBLE);
+	Particle.variable("modeList",      modeList,              STRING);
+	Particle.variable("mode",          currentModeName,       STRING);
+    Particle.variable("debug",         debug,                 STRING);
     
-    pinMode(TEMP_SENSOR_PIN,INPUT);
+    //pinMode(TEMP_SENSOR_PIN,INPUT);
     pinMode(PIXEL_PIN, OUTPUT);
-    pinMode(FAN_PIN, OUTPUT);
+    //pinMode(FAN_PIN, OUTPUT);
     
-    analogWrite(FAN_PIN, 0); //Turn Fan off
+    //analogWrite(FAN_PIN, 0); //Turn Fan off
   
 	//Initialize
     color1 = 0;
@@ -197,17 +272,25 @@ void setup() {
     color3 = 0;
     color4 = 0;
     speedIndex = 5;
-    brightness = 250;
+    brightness = 64; //250;
     run = FALSE;
     stop = FALSE;
 	setNewMode(getModeIndexFromID(NORMAL));
-	defaultColor = strip.Color(255,255,60);  // This seems close to incandescent color 
-	lastSync = lastCommandReceived = previousMillis = millis();	//Take a time stamp
-	
+	defaultColor = strip.Color((255 * .5),(255 * .5),(60 * .5));    // This seems close to incandescent color
+	snowFlakeColor = getColorFromInteger(0xFFFFFF);
+	lastSync = lastCommandReceived = previousMillis = millis();     // Take a time stamp
+    
+    // seed the random number generator.  THINGS WILL NEVER BE THE SAME AGAIN
+    uint32_t seed = millis(); 
+    srand(seed); 
+    c1 = Wheel(random(2, 256));
+    c2 = Wheel(random(2, 256));
+
 	strip.begin();     			//Start up the Neopixels     	
     colorAll(defaultColor);     //Turn on the NORMAL Mode
-    Spark.connect();            //Now connect to the cloud
-    Time.zone(-5);              //set time zone 
+    //We are already connected: SYSTEM_MODE is no longer set to SEMI_AUTOMATIC
+    //Particle.connect();			//Now connect to the cloud
+    Time.zone(TIME_ZONE_OFFSET);//Set time zone
     
     //Clear the mode list variable
 	sprintf(modeList,"");
@@ -216,10 +299,14 @@ void setup() {
         char cBuff[20];
         sprintf(cBuff,"%s,%i,",modeStruct[i].modeName, modeStruct[i].numOfColors);
 	    strcat(modeList,cBuff);
-    } 
+    }
 
-	getTemperature();
+	//getTemperature();
     tHour = Time.hour();	//used to check for correct time zone
+    
+    // Start the UDP
+    if(Udp.setBuffer(EXPECTED_PACKED_SIZE))
+        Udp.begin(TPM2NET_LISTENING_PORT);    
 }
 
 //delay (or speed) is passed 
@@ -229,11 +316,14 @@ void loop() {
     {
 		stop = FALSE;
         switch (currentModeID) {
-            case OFF:
+            case STANDBY:
     		    colorAll(strip.Color(0,0,0));
     		    break;
          	case COLORALL:
     	        colorAll(color1);
+    	        break;
+         	case COLORBREATHE:
+    	        pulse_oneColorAll();
     	        break;
          	case CHASER:
     		    colorChaser(color1);
@@ -241,10 +331,16 @@ void loop() {
     		case ZONE:
     	        colorZone(color1, color2, color3, color4); 
     	        break;
-    		case COLORWIPE:
-    		    colorWipe(color1);
+    		case COLORPULSE:
+    		    colorPulse();
     		    break;
-    		case CYCLEWIPE:
+    		case COLORSTRIPES:
+    		    colorStripes();
+    		    break;
+    		case ACIDDREAM:
+    		    cycleLerp();
+    		    break;    
+    		case COLORWIPE:
     		    cycleWipe();
     		    break;    
     		case STROBE:
@@ -259,9 +355,30 @@ void loop() {
     		case FROZEN:
     		    frozen();
     		    break;
+    		case LISTENER:
+    		    listen();
+    		    break;
     		case COLLIDE:
     		    collide();
     		    break;
+    		case POLICELIGHTS:
+    		    police_light_strobo();
+    		    break;
+    		case POLICELIGHTSWIPE:
+    		    police_lightsALL();
+    		    break;
+    		case POLICELIGHTSONE:
+    		    police_lightsONE();
+    		    break;
+    		case COLORFADE:
+    		    color_fade();
+    		    break;
+    		case RAINBOW_BURST:
+    		    random_burst();
+    		    break;
+         	case FLICKER:
+    		    flicker(color1);
+    			break;
     		case NORMAL:
     		default:
 		        colorAll(defaultColor);
@@ -273,10 +390,10 @@ void loop() {
  
     if(currentMillis - previousMillis > oneMinuteInterval) {
         previousMillis = currentMillis;
-        getTemperature();
+        //getTemperature();
         tHour = Time.hour();
 
-        if(measuredTemperature < MINFANTEMP) {
+        /*if(measuredTemperature < MINFANTEMP) {
 			//Turn fan Off
             analogWrite(FAN_PIN, 0); 
             //Spark.publish("Fan", "OFF", 36000, PRIVATE);
@@ -301,12 +418,12 @@ void loop() {
 			//Turn fan on at full speed and turn Off the lights
             analogWrite(FAN_PIN, 255); 
 			setNewMode(getModeIndexFromID(OFF));
-        }  
+        }*/
     //Put other timing stuff in here to speed up main loop
         if (currentMillis - lastSync > oneDayInterval) {
             // Request time time synchronization from the Spark Cloud
-            sprintf(debug,"Last sync time = %i,", (int)(currentMillis - lastSync));
-			Spark.syncTime();
+            //sprintf(debug,"Last sync time = %i,", (int)(currentMillis - lastSync));
+			Particle.syncTime();
             lastSync = currentMillis;
         }
         if (currentMillis - lastCommandReceived > oneHourInterval) {
@@ -314,133 +431,434 @@ void loop() {
             //If it's Monday through Friday between 8am and 4pm or between 10pm and 5am any day, turn Off the lights
             if(((Time.weekday() >= 2 && Time.weekday() <=6) && (Time.hour() >= 8 && Time.hour() <= 16)) || (Time.hour() >= 22) || (Time.hour() <= 5)) {
                 //No one is home or everyone is sleeping. So shut it down
-				sprintf(debug,"Last auto Off time = %i,", (int)(currentMillis - lastCommandReceived));
+				//sprintf(debug,"Last auto Off time = %i,", (int)(currentMillis - lastCommandReceived));
 				lastCommandReceived = currentMillis;
 				wifi = WiFi.RSSI();
-				setNewMode(getModeIndexFromID(OFF));
+				setNewMode(getModeIndexFromID(STANDBY));
                 run = TRUE;
             }
         }
     }
 }
 
-int getTemperature(void){
+/*int getTemperature(void){
     double measuredVoltage = refVoltage * analogRead(TEMP_SENSOR_PIN) / 4095.0;
     measuredTemperature = (measuredVoltage - 0.5) * 100.0;          //Celcius Temp
     measuredTemperature = (measuredTemperature * 9.0 / 5.0) + 32.0; //Convert to Fahrenheit
 
     return 1;
-}
+}*/
 
 //Used in all modes to set the brightness, show the lights, process Spark events and delay
 int showPixels(void) {
 	strip.setBrightness(brightness);
     strip.show();
-    Spark.process();    //process Spark events
+    Particle.process();    //process Spark events
 	return 1;
 }
 
 // Set all pixels in the strip to a solid color
 int colorAll(uint32_t c) {
-    uint16_t i; 
     run = FALSE;
-  
-    for(i=0; i<strip.numPixels(); i++) {
-        strip.setPixelColor(i, c);
+    
+    if(c > 0) {
+        Color c2, c1 = getColorFromInteger(c);
+        uint32_t maxColorPixel = getHighestValFromRGB(c1);
+        
+        for(int i=0; i<=maxColorPixel; i+=(maxColorPixel*.05)) {
+            if(i <= c1.red) c2.red = i;
+            if(i <= c1.green) c2.green = i;
+            if(i <= c1.blue) c2.blue = i;
+            for(int j=0; j<strip.numPixels(); j++)
+                strip.setPixelColor(j, strip.Color(c2.red, c2.green, c2.blue));
+            showPixels();
+            if(stop == TRUE) {return 0;}
+        }
     }
-    showPixels();
-    if(stop == TRUE) {return 0;}
- 
+    else {
+        Color c2, c1;
+
+        for(int i=0; i<strip.numPixels(); i++) {
+            c = strip.getPixelColor(i);
+            if(c > 0) {
+                c1 = getColorFromInteger(c);
+                break;
+            }
+        }
+        if(c > 0) {
+            uint32_t maxColorPixel = getHighestValFromRGB(c1);
+
+            for(int i=maxColorPixel; i>=0; i-=(maxColorPixel*.05)) {
+                if(i <= c1.red) c2.red = i;
+                if(i <= c1.green) c2.green = i;
+                if(i <= c1.blue) c2.blue = i;
+                for(int j=0; j<strip.numPixels(); j++)
+                    strip.setPixelColor(j, strip.Color(c2.red, c2.green, c2.blue));
+                showPixels();
+                if(stop == TRUE) {return 0;}
+            }
+            //Ensure every pixel has been fully blanked
+            for(int i=0; i<strip.numPixels(); i++)
+                strip.setPixelColor(i, 0);
+            showPixels();
+        }
+        else {
+            for(int i=0; i<strip.numPixels(); i++)
+                strip.setPixelColor(i, 0);
+            showPixels();
+        }
+    }
     return 1;
 }
 
 void colorChaser(uint32_t c) {
-    uint16_t i;
+    uint16_t i, j;
+    Color c2 = getColorFromInteger(c);
+
     //Turn Off all pixels
-    for(i=0; i<strip.numPixels(); i++) {
+    for(i=0; i<strip.numPixels(); i++)
         strip.setPixelColor(i, 0);
-    }
-    strip.show();
+    showPixels();
 
     //Forward
-    for(i=zone1Start; i<=ChaserZone3Section1End; i++) {
-        strip.setPixelColor(i, c);
-        if(i > zone1Start) {
-            strip.setPixelColor(i-1, 0);
-        }
-        showPixels();
+    for(i=zone1Start; i<=zone2End; i++) {
+        fadeInToColor(i, c2);
+        if(i > zone1Start)
+            fadeOutFromColor(i-1, c2);
         if(stop == TRUE) {return;}
-		delay(speed);
+    	delay(speed);
     }
-    strip.setPixelColor(ChaserZone3Section1End, 0);
-    for(i=zone4Start; i<=zone4End; i++) {
-        strip.setPixelColor(i, c);
-        strip.setPixelColor(i-1, 0);
-        showPixels();
+    strip.setPixelColor(zone2End, 0);
+    for(i=zone2End; i<=zone3End; i++) {
+        fadeInToColor(i, c2);
+        fadeOutFromColor(i-1, c2);
         if(stop == TRUE) {return;}
-		delay(speed);
+    	delay(speed);
     }
-    strip.setPixelColor(zone4End, 0);
-    for(i=chaserZone3Section2Start; i<=zone3End; i++) {
-        strip.setPixelColor(i, c);
-        strip.setPixelColor(i-1, 0);
-        showPixels();
-        if(stop == TRUE) {return;}
-		delay(speed);
-    }
-	
-    //Reverse
     strip.setPixelColor(zone3End, 0);
-	for(i=zone3End-1; i>=chaserZone3Section2Start; i--) {
-        strip.setPixelColor(i, c);
-        strip.setPixelColor(i+1, 0);
-        showPixels();
+    for(i=zone3End; i<zone4End; i++) {
+        fadeInToColor(i, c2);
+        fadeOutFromColor(i-1, c2);
         if(stop == TRUE) {return;}
-		delay(speed);
+    	delay(speed);
     }
-    strip.setPixelColor(chaserZone3Section2Start, 0);
-    for(i=zone4End; i>=zone4Start; i--) {
-        strip.setPixelColor(i, c);
-        strip.setPixelColor(i+1, 0);
-        showPixels();
+    
+    //Reverse
+    strip.setPixelColor(zone4End, 0);
+    for(i=zone4End-1; i>=zone3End; i--) {
+        fadeInToColor(i, c2);
+        if(i < zone4End)
+            fadeOutFromColor(i+1, c2);
         if(stop == TRUE) {return;}
-		delay(speed);
+    	delay(speed);
     }
-    strip.setPixelColor(zone4Start, 0);
-    for(i=ChaserZone3Section1End; i>zone1Start; i--) {
-        strip.setPixelColor(i, c);
-        strip.setPixelColor(i+1, 0);
-        showPixels();
+    strip.setPixelColor(zone3End, 0);
+    for(i=zone3End; i>=zone2End; i--) {
+        fadeInToColor(i, c2);
+        fadeOutFromColor(i+1, c2);
         if(stop == TRUE) {return;}
-		delay(speed);
+    	delay(speed);
+    }
+    strip.setPixelColor(zone2End, 0);
+    for(i=zone2End; i>zone1Start; i--) {
+        fadeInToColor(i, c2);
+        fadeOutFromColor(i+1, c2);
+        if(stop == TRUE) {return;}
+    	delay(speed);
     }
 }
 
 int colorZone(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4) {
-    uint16_t i;
+    uint16_t i, j;
+    uint32_t maxColorPixel, increment;
+    Color col1 = getColorFromInteger(c1);
+    Color col2 = getColorFromInteger(c2);
+    Color col3 = getColorFromInteger(c3);
+    Color col4 = getColorFromInteger(c4);
+    Color c;
     run = FALSE;
     
-    for(i=0; i<strip.numPixels(); i++) {
-        if(i>=zone1Start && i<=zone1End) 
-	        strip.setPixelColor(i, c1);
-		else if(i>=zone2Start && i<=zone2End)
-			strip.setPixelColor(i, c2);
-		else if(i>=zone3Start && i<=zone3End)
-			strip.setPixelColor(i, c3);
-		else if(i>=zone4Start && i<=zone4End)
-		    strip.setPixelColor(i, c4);
-	}
-    showPixels();
+    maxColorPixel = getHighestValFromRGB(col1);
+    increment = map(speed, 1, 120, maxColorPixel*.25, 5);
+    for(j=0; j<=maxColorPixel; j+=increment) {
+        if(j <= col1.red) c.red = j;
+        if(j <= col1.green) c.green = j;
+        if(j <= col1.blue) c.blue = j;
+        for(i=zone1Start; i<=zone1End; i++)
+            strip.setPixelColor(i, strip.Color(c.red, c.green, c.blue));
+        showPixels();
+        if(stop == TRUE) {return 0;}
+        delay(speed);
+    }
+    maxColorPixel = getHighestValFromRGB(col2);
+    increment = map(speed, 1, 120, maxColorPixel*.25, 5);
+    for(j=0; j<=maxColorPixel; j+=increment) {
+        if(j <= col2.red) c.red = j;
+        if(j <= col2.green) c.green = j;
+        if(j <= col2.blue) c.blue = j;
+        for(i=zone2Start; i<=zone2End; i++)
+            strip.setPixelColor(i, strip.Color(c.red, c.green, c.blue));
+        showPixels();
+        if(stop == TRUE) {return 0;}
+        delay(speed);
+    }
+    maxColorPixel = getHighestValFromRGB(col3);
+    increment = map(speed, 1, 120, maxColorPixel*.25, 5);
+    for(j=0; j<=maxColorPixel; j+=increment) {
+        if(j <= col3.red) c.red = j;
+        if(j <= col3.green) c.green = j;
+        if(j <= col3.blue) c.blue = j;
+        for(i=zone3Start; i<=zone3End; i++)
+            strip.setPixelColor(i, strip.Color(c.red, c.green, c.blue));
+        showPixels();
+        if(stop == TRUE) {return 0;}
+        delay(speed);
+    }
+    maxColorPixel = getHighestValFromRGB(col4);
+    increment = map(speed, 1, 120, maxColorPixel*.25, 5);
+    for(j=0; j<=maxColorPixel; j+=increment) {
+        if(j <= col4.red) c.red = j;
+        if(j <= col4.green) c.green = j;
+        if(j <= col4.blue) c.blue = j;
+        for(i=zone4Start; i<=zone4End; i++)
+            strip.setPixelColor(i, strip.Color(c.red, c.green, c.blue));
+        showPixels();
+        if(stop == TRUE) {return 0;}
+        delay(speed);
+    }
     return 1;
+}
+//Fade through colors over all LEDs
+void color_fade() { //OK //-FADE ALL LEDS THROUGH HSV RAINBOW
+   static int ihue = -1;
+   ihue++;
+   if (ihue >= 255) {
+      ihue = 0;
+   }
+   for(int idex = 0 ; idex < PIXEL_CNT; idex++ ) {
+      strip.setPixelColor(idex, Wheel(ihue));
+   }
+   showPixels();
+   if(stop == TRUE) {return;}
+   delay(speed);
+}
+
+//Random burst - Randowm colors on each LED
+void random_burst() { //-RANDOM INDEX/COLOR
+    static int idex = 0;
+    static int ihue = 0;
+
+    idex = random(0,PIXEL_CNT-1);
+    ihue = random(0,255);
+    
+    Color c1 = getColorFromInteger(Wheel(ihue));
+    uint32_t c2 = strip.getPixelColor(idex);
+    if(c2 > 0)
+        fadeOutFromColor(idex, getColorFromInteger(c2));
+    fadeInToColor(idex, c1); //strip.setPixelColor(idex, Wheel(ihue));
+    if(stop == TRUE) {return;}
+    //showPixels();
+    delay(speed);
+}
+
+//Flicker effect - random flashing of all LEDs
+void flicker(uint32_t c) {
+    Color c2, c1 = getColorFromInteger(c);
+    int ibright = random((brightness*.25), brightness+1);
+    int random_delay = random(1, map(speed, 1, 120, 100, 10)+1);
+    uint32_t maxColorPixel = floor(max(ibright, getHighestValFromRGB(c1)));
+    uint32_t increment = map(speed, 1, 120, maxColorPixel*.25, 5);
+    
+    for(int j=maxColorPixel*.25; j<=maxColorPixel; j+=increment) {
+        for(int i = 0; i < PIXEL_CNT; i++ ) {
+            if(j <= c1.red) c2.red = j;
+            if(j <= c1.green) c2.green = j;
+            if(j <= c1.blue) c2.blue = j;
+            strip.setPixelColor(i, strip.Color(c2.red, c2.green, c2.blue));
+            //strip.setPixelColor(i, c);
+        }
+    	//strip.setBrightness(ibright);
+        strip.show();
+        if(stop == TRUE) {return;}
+        Particle.process();    //process Spark events
+        delay(random_delay);
+    }
+
+	/*strip.setBrightness(ibright);
+    strip.show();
+    if(stop == TRUE) {return;}
+    Particle.process();    //process Spark events
+    delay(random_delay);*/
+}
+
+//Fade in/out a color using brightness/saturation
+void pulse_oneColorAll() { //-PULSE BRIGHTNESS ON ALL LEDS TO ONE COLOR 
+    static int ival = 0;
+    static int xhue = Wheel(random(0, 256));
+    static int bouncedirection = 0;
+    int isteps = constrain(brightness*.03, .6, brightness*.25);
+    
+    if (bouncedirection == 0) {
+    ival += isteps;
+    if (ival >= brightness)
+        bouncedirection = 1;
+    }
+    if (bouncedirection == 1) {
+        ival -= isteps;
+        if (ival <= 0) {
+            bouncedirection = 0;
+            xhue = Wheel(random(0, 256));
+        }
+    }
+    for(int i = 0; i < PIXEL_CNT; i++) {
+        strip.setPixelColor(i, xhue);
+        strip.setBrightness(ival);
+    }
+  
+    strip.show();
+    if(stop == TRUE) {return;}
+    Particle.process();    //process Spark events
+    delay(speed);
+}
+
+//Police light - red/blue strobo on each half of stripe
+void police_light_strobo() {
+    int middle = zone2End;
+    static int color = 0;  
+    static int left_right = 0;
+    
+    if (left_right > 19)
+        left_right = 0;
+    
+    if (color == 1)
+        color = 0;
+    else
+        color = 1;
+    
+    for (int i = 0; i < PIXEL_CNT; i++) {
+        if (i <= middle && left_right < 10) {
+            if (color)
+                strip.setPixelColor(i, strip.Color(0, 0, 255));
+            else
+                strip.setPixelColor(i, 0);
+        }
+        else if (i > middle && left_right >= 10) {
+            if (color)
+                strip.setPixelColor(i, strip.Color(255, 0, 0));
+            else
+                strip.setPixelColor(i, 0);
+        }
+        if(stop == TRUE) {return;}
+    }
+    
+    showPixels();
+    if(stop == TRUE) {return;}
+    delay(speed);
+    left_right++;
+}
+
+//Police Light all LEDs 
+void police_lightsALL() { //-POLICE LIGHTS (TWO COLOR SOLID)
+    static int idex = 0;
+    int idexR = idex;
+    int idexB = antipodal_index(idexR);
+    
+    strip.setPixelColor(idexR, strip.Color(255, 0, 0));
+    strip.setPixelColor(idexB, strip.Color(0, 0, 255));
+    showPixels();
+    if(stop == TRUE) {return;}
+    delay(speed);
+  
+    idex++;
+    if (idex >= PIXEL_CNT)
+        idex = 0;
+}
+
+//Police Light one LED blue and red
+void police_lightsONE() { //-POLICE LIGHTS (TWO COLOR SINGLE LED)
+    static int idex = 0;
+    int idexR = idex;
+    int idexB = antipodal_index(idexR);
+    Color red = {0xFF, 0, 0};
+    Color blue = {0, 0, 0xFF};
+    
+    for(int i = 0; i < PIXEL_CNT; i++ ) {
+        if (i == idexR)
+            fadeInToColor(i, red);
+        else if (i == idexB)
+            fadeInToColor(i, blue);
+        else {
+            for(int i=0; i<strip.numPixels(); i++) {
+                uint32_t pixelColor = strip.getPixelColor(i);
+                if(pixelColor > 0)
+                    fadeOutFromColor(i, getColorFromInteger(pixelColor));
+            }
+        }
+        if(stop == TRUE) {return;}
+    }
+    delay(speed);
+  
+    idex++;
+    if (idex >= PIXEL_CNT) idex = 0;
+}
+
+//Pulse all dots with pseudo-random colors
+void colorPulse() {
+    uint16_t i, j;
+    uint32_t pulseRate;
+
+    for(j=0; j<=c2; j++) {
+        for(i=0; i<strip.numPixels(); i++) {
+            pulseRate = abs(255-(speed+j));
+            strip.setPixelColor(i, Wheel(lerpColor(j, speed, pulseRate, 0, 255)));
+        }
+        showPixels();
+        if(stop == TRUE || pulseRate > 3840) {return;}  //Too fast - bail out.
+		delay(speed);
+    }
+}
+
+//Fill the dots with patterns from colors interpolated between 2 random colors
+void cycleLerp() {
+    uint16_t i, j;
+    uint32_t rate;
+
+    for(j=0; j<=c2; j++) {
+        for(i=0; i<strip.numPixels(); i++) {
+            rate = abs(i-(speed+j));
+            strip.setPixelColor(i, Wheel(lerpColor(j, c1, rate, 0, 255)));
+        }
+        showPixels();
+        if(stop == TRUE || rate > 7680) {return;}   //Gettin' weird - bail out.
+		delay(speed);
+    }
+}
+
+//Randomly fill the dots with colors interpolated between the 2 chosen colors
+void colorStripes() {
+    uint16_t i, j;
+
+    for(j=0; j<=c2; j++) {
+        for(i=0; i<strip.numPixels(); i++)
+            strip.setPixelColor(i, lerpColor(j, c1, abs(i-j), 0, 255));
+        showPixels();
+        if(stop == TRUE) {return;}
+        delay(speed);
+    }
+    return;
 }
 
 //Fill the dots one after the other with a color, wait (ms) after each one
 int colorWipe(uint32_t c) {
     uint16_t i;
+    Color c2 = getColorFromInteger(c);
     run = FALSE;
   
     for(i=0; i<strip.numPixels(); i++) {
-        strip.setPixelColor(i, c);
+        uint32_t c3 = strip.getPixelColor(i);
+        if(c3 > 0)
+            fadeOutFromColor(i, getColorFromInteger(c3));
+        fadeInToColor(i, c2);   //strip.setPixelColor(i, c);
         showPixels();
         if(stop == TRUE) {return 0;}
 		delay(speed);
@@ -451,137 +869,160 @@ int colorWipe(uint32_t c) {
 //use colorWipe to cycle through all the colors 
 void cycleWipe(void) {
     uint16_t j;
-    int returnValue=1;
+    int retVal=1;
 
-    for(j=0; j<256; j+=15) {
-        if(j%2==0) {
-            returnValue = colorWipe(Wheel(j & 0xFF));
-        }
-        else {
-            returnValue = colorWipe(Wheel((j+80) & 0xFF));
-        }
-        if(stop == TRUE || returnValue == 0) {return;}
+    for(j=0; j<256; j++) {
+        if(j%2==0)
+            retVal = colorWipe(Wheel(j & 0xFF));
+        else
+            retVal = colorWipe(Wheel((j+80) & 0xFF));
+        if(stop == TRUE || retVal == 0) {return;}
 		delay(speed);
     }
     //colorWipe turns off the run loop, so let's turn it back on
-    run = true; 
+    run = TRUE; 
 }
 
 void strobe(uint32_t color) {
-    int returnValue=1;
-
-    returnValue = colorAll(color);				//Turn On all Pixels
-    if(stop == TRUE || returnValue == 0) {return;}
+    int retVal=1;
+    
+    retVal = colorAll(color);               //Turn On all Pixels
+    if(stop == TRUE || retVal == 0) {return;}
 	delay(speed);
-    returnValue = colorAll(strip.Color(0,0,0));	//Turn Off all Pixels
-    if(stop == TRUE || returnValue == 0) {return;}
+    
+    retVal = colorAll(strip.Color(0,0,0));  //Turn Off all Pixels
+    if(stop == TRUE || retVal == 0) {return;}
 	delay(speed);
-    run = true;
+    
+    //colorAll turns off the run loop, so let's turn it back on
+    run = TRUE;
 }
 
 void rainbow(void) {
-  uint16_t i, j;
-
-  for(j=0; j<256; j++) {
-    for(i=0; i<strip.numPixels(); i++) {
-      strip.setPixelColor(i, Wheel((i+j) & 255));
+    uint16_t i, j;
+    
+    for(j=0; j<256; j++) {
+        for(i=0; i<strip.numPixels(); i++)
+            strip.setPixelColor(i, Wheel((i+j) & 255));
+        showPixels();
+        if(stop == TRUE) {return;}
+        delay(speed);
     }
-    showPixels();
-    if(stop == TRUE) {return;}
-	delay(speed);
-  }
 }
 
 // Slightly different, this makes the rainbow equally distributed throughout, then wait (ms)
 void rainbowCycle(void) {
   uint16_t i, j;
 
-  for(j=0; j<256; j++) { // 1 cycle of all colors on wheel
-    for(i=0; i< strip.numPixels(); i++) {
-      strip.setPixelColor(i, Wheel(((i * 256 / strip.numPixels()) + j) & 255));
+    for(j=0; j<256; j++) { // 1 cycle of all colors on wheel
+        for(i=0; i< strip.numPixels(); i++)
+            strip.setPixelColor(i, Wheel(((i * 256 / strip.numPixels()) + j) & 255));
+        showPixels();
+        if(stop == TRUE) {return;}
+        delay(speed);
     }
-    showPixels();
-    if(stop == TRUE) {return;}
-	delay(speed);
-  }
 }
 
 //Theatre-style crawling lights with rainbow effect
 void theaterChaseRainbow(void) {
-  for (uint16_t j=0; j < 256; j++) {     // cycle all 256 colors in the wheel
-    for (uint16_t q=0; q < 3; q++) {
-        for (int i=0; i < strip.numPixels(); i=i+3) {
-          strip.setPixelColor(i+q, Wheel( (i+j) % 255));    //turn every third pixel on
-        }
-        showPixels();
-        if(stop == TRUE) {return;}
-		delay(speed);
-        for (uint16_t i=0; i < strip.numPixels(); i=i+3) {
-          strip.setPixelColor(i+q, 0);        //turn every third pixel off
+    for (uint16_t j=0; j < 256; j++) {                          //cycle all 256 colors in the wheel
+        for (uint16_t q=0; q < 3; q++) {
+            for (int i=0; i < strip.numPixels(); i=i+3)
+                strip.setPixelColor(i+q, Wheel( (i+j) % 255));  //turn every third pixel on
+            showPixels();
+            if(stop == TRUE) {return;}
+        	delay(speed);
+            for (uint16_t i=0; i < strip.numPixels(); i=i+3)
+                strip.setPixelColor(i+q, 0);                    //turn every third pixel off
         }
     }
-  }
 }
 
 //Fade from teal to blue to purple then back to blue then teal, repeat
 //Random snowflakes twinkle white for random amounts of time 
 //The snowflakes will hang around no faster than MIN_DELAY and no slower than MAX_DELAY
 void frozen(void) {
-  uint16_t i, j;
-  uint16_t startColor = 140;    //Hue for teal
-  uint16_t stopColor  = 210;    //Hue for purple
-  const int MIN_DELAY = 400;	//in ms
-  const int MAX_DELAY = 700;	//in ms
-  const int MIN_FLAKES = strip.numPixels()*0.01;	//  1% of total number of pixels
-  const int MAX_FLAKES = strip.numPixels()*0.1;	// 10% of total number of pixels
-  int numSnowFlakes = random(MIN_FLAKES, MAX_FLAKES);	//How many flakes should we have at a time
-  unsigned long previousMillis = millis();
-  unsigned long flakeLifeSpan = random(MIN_DELAY, MAX_DELAY); //How long will a snowflake last
-
-  //forwards
-  for(j=startColor; j<stopColor; j++) { 	//cycle through the colors
-    for(i=0; i< strip.numPixels(); i++) {	
-        strip.setPixelColor(i, Wheel(j));	//first set all pixels to the same color
-        if(millis() - previousMillis > flakeLifeSpan) {
-			previousMillis = millis();						//reset time interval
-			flakeLifeSpan = random(MIN_DELAY, MAX_DELAY);	//set new lifespan	
-			numSnowFlakes = random(MIN_FLAKES, MAX_FLAKES); //set new number of flakes
-            findRandomSnowFlakesPositions(numSnowFlakes);	//get the list of flake positions
+    uint16_t i, j, k;
+    uint16_t startColor = 140;  //Hue for teal
+    uint16_t stopColor  = 210;  //Hue for purple
+    const int MIN_DELAY = 400;  //in ms
+    const int MAX_DELAY = 700;  //in ms
+    const int MIN_FLAKES = strip.numPixels()*0.01;	//  1% of total number of pixels
+    const int MAX_FLAKES = strip.numPixels()*0.1;	// 10% of total number of pixels
+    int numSnowFlakes = random(MIN_FLAKES, MAX_FLAKES);	//How many flakes should we have at a time
+    unsigned long previousMillis = millis();
+    unsigned long flakeLifeSpan = random(MIN_DELAY, MAX_DELAY); //How long will a snowflake last
+    int increment = constrain(map(speed, 1, 120, 4, 8), 4, 8);  //How fast/slow a snowflake will dim
+    
+    //forwards
+    for(j=startColor; j<stopColor; j++) { 	//cycle through the colors
+        for(i=0; i<strip.numPixels(); i++) {
+            strip.setPixelColor(i, Wheel(j));	//first set all pixels to the same color
+            if(millis() - previousMillis > flakeLifeSpan) {
+        		previousMillis = millis();						//reset time interval
+        		flakeLifeSpan = random(MIN_DELAY, MAX_DELAY);	//set new lifespan	
+        		numSnowFlakes = random(MIN_FLAKES, MAX_FLAKES); //set new number of flakes
+                findRandomSnowFlakesPositions(numSnowFlakes);	//get the list of flake positions
+                //avoid our snowflakes fading out by brightening them up every now and then
+                if(strip.Color(snowFlakeColor.red, snowFlakeColor.green, snowFlakeColor.blue) < 0xFFFFFF) {
+                    if(snowFlakeColor.red < 0xFF) snowFlakeColor.red+=(0xFF-(snowFlakeColor.red))*.5;
+                    if(snowFlakeColor.green < 0xFF) snowFlakeColor.green+=(0xFF-(snowFlakeColor.green))*.5;
+                    if(snowFlakeColor.blue < 0xFF) snowFlakeColor.blue+=(0xFF-(snowFlakeColor.blue))*.5;
+                    for(k=0; k<numSnowFlakes; k++)
+                        strip.setPixelColor(randomFlakes[k], strip.Color(snowFlakeColor.red, snowFlakeColor.green, snowFlakeColor.blue)); //Set snowflake
+                    showPixels();
+                    if(stop == TRUE) {return;}
+                }
+                increment = constrain(map(speed, 1, 120, 4, 8), 4, 8);  //refresh dim rate
+            }
         }
+        if(snowFlakeColor.red > 0) snowFlakeColor.red-=increment;
+        if(snowFlakeColor.green > 0) snowFlakeColor.green-=increment;
+        if(snowFlakeColor.blue > 0) snowFlakeColor.blue-=increment;
+        for(k=0; k<numSnowFlakes; k++)
+            strip.setPixelColor(randomFlakes[k], strip.Color(snowFlakeColor.red, snowFlakeColor.green, snowFlakeColor.blue)); //Set snowflake
+        showPixels();
+        if(stop == TRUE) {return;}
+        delay(speed);
+        increment = constrain(map(speed, 1, 120, 4, 8), 4, 8);  //refresh dim rate
     }
-	setRandomSnowFlakes(numSnowFlakes);	//now set the snowflake positions
-	showPixels();
-    if(stop == TRUE) {return;}
-	delay(speed);
-  }
-  
-  //backwards
-  for(j=stopColor; j>startColor; j--) { 	//cycle through the colors
-    for(i=0; i< strip.numPixels(); i++) {
-        strip.setPixelColor(i, Wheel(j));	//first set all pixels to the same color
-        if(millis() - previousMillis > flakeLifeSpan) {
-			previousMillis = millis();						//reset time interval
-			flakeLifeSpan = random(MIN_DELAY, MAX_DELAY);	//set new lifespan	
-			numSnowFlakes = random(MIN_FLAKES, MAX_FLAKES); //set new number of flakes
-            findRandomSnowFlakesPositions(numSnowFlakes);	//get the list of flake positions
+    
+    //backwards
+    for(j=stopColor; j>startColor; j--) { 	//cycle through the colors
+        for(i=0; i< strip.numPixels(); i++) {
+            strip.setPixelColor(i, Wheel(j));	//first set all pixels to the same color
+            if(millis() - previousMillis > flakeLifeSpan) {
+        		previousMillis = millis();						//reset time interval
+        		flakeLifeSpan = random(MIN_DELAY, MAX_DELAY);	//set new lifespan	
+        		numSnowFlakes = random(MIN_FLAKES, MAX_FLAKES); //set new number of flakes
+                findRandomSnowFlakesPositions(numSnowFlakes);	//get the list of flake positions
+                //avoid our snowflakes fading out by brightening them up every now and then
+                if(strip.Color(snowFlakeColor.red, snowFlakeColor.green, snowFlakeColor.blue) < 0xFFFFFF) {
+                    if(snowFlakeColor.red < 0xFF) snowFlakeColor.red+=(0xFF-(snowFlakeColor.red))*.5;
+                    if(snowFlakeColor.green < 0xFF) snowFlakeColor.green+=(0xFF-(snowFlakeColor.green))*.5;
+                    if(snowFlakeColor.blue < 0xFF) snowFlakeColor.blue+=(0xFF-(snowFlakeColor.blue))*.5;
+                    for(k=0; k<numSnowFlakes; k++)
+                        strip.setPixelColor(randomFlakes[k], strip.Color(snowFlakeColor.red, snowFlakeColor.green, snowFlakeColor.blue)); //Set snowflake
+                    showPixels();
+                    if(stop == TRUE) {return;}
+                }
+                increment = constrain(map(speed, 1, 120, 4, 8), 4, 8);  //refresh dim rate
+                if(strip.Color(snowFlakeColor.red, snowFlakeColor.green, snowFlakeColor.blue) <= 0) snowFlakeColor = getColorFromInteger(0xFFFFFF);
+            }
         }
+        if(snowFlakeColor.red > 0) snowFlakeColor.red-=increment;
+        if(snowFlakeColor.green > 0) snowFlakeColor.green-=increment;
+        if(snowFlakeColor.blue > 0) snowFlakeColor.blue-=increment;
+        for(k=0; k<numSnowFlakes; k++)
+            strip.setPixelColor(randomFlakes[k], strip.Color(snowFlakeColor.red, snowFlakeColor.green, snowFlakeColor.blue)); //Set snowflake
+        showPixels();
+        if(stop == TRUE) {return;}
+        delay(speed);
+        increment = constrain(map(speed, 1, 120, 4, 8), 4, 8);  //refresh dim rate
     }
-	setRandomSnowFlakes(numSnowFlakes);	//now set the snowflake positions
-    showPixels();
-    if(stop == TRUE) {return;}
-	delay(speed);
-  }
 }
 
-void setRandomSnowFlakes(int numFlakes)
-{
-    for(int i=0;i<numFlakes;i++) {
-        strip.setPixelColor(randomFlakes[i], 0xFFFFFF); //Set snowflake
-    }
-}
-
-void findRandomSnowFlakesPositions(int numFlakes)
-{
+void findRandomSnowFlakesPositions(int numFlakes) {
     for(int i=0;i<numFlakes;i++) {
         randomFlakes[i] = random(strip.numPixels());
         if(i > 0) {
@@ -648,6 +1089,100 @@ uint32_t Wheel(byte WheelPos) {
   }
 }
 
+/** Linear interpolation between colors.
+  @param a, b The colors to interpolate between.
+  @param val Position on the line between color a and color b.
+  When equal to min the output is color a, and when equal to max the output is color b.
+  @param minVal Minimum value that val will take.
+  @param maxVal Maximum value that val will take.
+
+  @return Color between colors a and b.*/
+uint32_t lerpColor(uint32_t c1, uint32_t c2, uint32_t val, uint32_t minVal, uint32_t maxVal) {
+    return c1 + (c2-c1) * (val-minVal) / (maxVal-minVal);
+}
+
+/** Find index of antipodal opposite LED **/
+int antipodal_index(int i) {
+    int iN = i + zone2End;
+    if (i >= zone2End)
+        iN = ( i + zone2End ) % PIXEL_CNT; 
+    return iN;
+}
+
+/** Break down an int color into its 3 rgb components for the given pixel 
+  @param index The strip index of the pixel.
+  @return The rgb Color for the given pixel.*/
+Color getPixelColor(uint32_t index) {
+    uint32_t col = strip.getPixelColor(index);
+    return getColorFromInteger(col);
+}
+
+/** Break down an int color into its 3 rgb components for the given integer
+  @param col The color value, represented by an integer
+  @return The rgb Color for the given integer.*/
+Color getColorFromInteger(uint32_t col) {
+    Color retVal;
+    
+    retVal.red   = (uint8_t)(col >> 16),
+    retVal.green = (uint8_t)(col >>  8),
+    retVal.blue  = (uint8_t)col;
+    return retVal;
+}
+
+/** Fade in a pixel color from 0 to the given Color
+  @param index The strip index of the pixel.
+  @param col The Color to fade into.*/
+void fadeInToColor(uint32_t index, Color col) {
+    uint32_t maxColorPixel = getHighestValFromRGB(col);
+    uint32_t increment = map(speed, 1, 120, maxColorPixel*.25, 5);
+    Color col2;
+    
+    for(int i=0; i<=maxColorPixel; i+=increment) {
+        if(i <= col.red) col2.red = i;
+        if(i <= col.green) col2.green = i;
+        if(i <= col.blue) col2.blue = i;
+        strip.setPixelColor(index, strip.Color(col2.red, col2.green, col2.blue));
+        showPixels();
+        if(stop == TRUE) {return;}
+    }
+}
+
+/** Fade out a pixel color from the given Color to 0
+  @param index The strip index of the pixel.
+  @param col The Color to fade out from.*/
+void fadeOutFromColor(uint32_t index, Color col) {
+    uint32_t maxColorPixel = getHighestValFromRGB(col);
+    uint32_t increment = map(speed, 1, 120, maxColorPixel*.25, 5);
+    Color col2;
+    
+    for(int i=maxColorPixel; i>=0; i-=increment) {
+        if(i <= col.red) col2.red = i;
+        if(i <= col.green) col2.green = i;
+        if(i <= col.blue) col2.blue = i;
+        strip.setPixelColor(index, strip.Color(col2.red, col2.green, col2.blue));
+        showPixels();
+        if(stop == TRUE) {return;}
+    }
+    //Ensure the pixel has been fully blanked
+    strip.setPixelColor(index, 0);
+    showPixels();
+}
+
+/** Return the highest value among the 3 rgb components for the given Color
+  @param col The Color to be evaluated.
+  @return The highest value, be it r, g or b, from the given Color.*/
+uint32_t getHighestValFromRGB(Color col) {
+    if(col.red-col.green > 0)
+        if(col.red-col.blue > 0)
+            return col.red; 
+        else 
+            return col.blue;
+    else if(col.green-col.blue > 0) 
+        return col.green;
+    else 
+        return col.blue;
+}
+
 //Spark Cloud Mode
 //Expect a string like thisto change the mode Mode: M:ZONE,W:30,B:120,C1:002BFF,C2:FF00DB,C3:FF4600,C4:23FF00,
 //Or simply this to just update speed or brightness:        W:30,B:120,
@@ -687,17 +1222,23 @@ int SetMode(String command) {
 		    if(receivedSpeedValue > (int)(sizeof(speedPresets)/sizeof(int)))
 		        receivedSpeedValue = sizeof(speedPresets)/sizeof(int) - 1;
 		    if (speedIndex != receivedSpeedValue) {
-				isNewSpeed = true;
+		        //we don't update the speed when currently in LISTENER mode
+				if(currentModeID != LISTENER) isNewSpeed = true;
 			}
-			speedIndex = receivedSpeedValue;
-			speed = speedPresets[speedIndex];
+			//we don't update the speed when currently in LISTENER mode
+			if(currentModeID != LISTENER) {
+    			speedIndex = receivedSpeedValue;
+    			speed = speedPresets[speedIndex];
+			}
 		}
 		else if(command.charAt(beginIdx) == 'B') {
 		    int newBrightness = command.substring(beginIdx+2, idx).toInt() * 255 / 100;	//Scale 0-100 to 0-255
 			if(brightness != newBrightness) {
-				isNewBrightness = true;
+			    //we don't update the brightness when currently in LISTENER mode
+				if(currentModeID != LISTENER) isNewBrightness = true;
 			}
-			brightness = newBrightness;
+			//we don't update the brightness when currently in LISTENER mode
+			if(currentModeID != LISTENER) brightness = newBrightness;
 		}
         else if(command.charAt(beginIdx) == 'C') {
             char * p;
@@ -734,7 +1275,8 @@ int SetMode(String command) {
     }
     else {
 		//I guess we're updating only the speed or brightness, so let's update the Pixels
-		showPixels();
+		//we don't update the speed or brightness when currently in LISTENER mode
+		if(currentModeID != LISTENER) showPixels();
 		if(isNewBrightness==true) {
 			//Let the sender know we got the new brightness command
 			returnValue = 1001;
@@ -781,3 +1323,66 @@ int getModeIndexFromID(int id)
     return -1;
 }
 
+void listen() {
+    run = TRUE;
+    
+    // Checks for the presence of a UDP packet, and reports the buffer size
+    int32_t bytes = Udp.parsePacket();
+    if(bytes >= EXPECTED_PACKED_SIZE) {
+        // Read 198 bytes of data from the buffer
+        char data[EXPECTED_PACKED_SIZE];
+        Udp.read(data, EXPECTED_PACKED_SIZE);
+        
+        // Ignore all other chars
+        Udp.flush();
+        
+        /*------------------*/
+        /*-- Header check --*/
+        /*------------------*/
+        // Block Start Byte
+        if(data[0] == TPM2NET_HEADER_IDENT) {
+            // Block Type: Command Packet
+            if((data[1] == TPM2NET_CMD_COMMAND) || (stop == TRUE)) {
+                strip.setBrightness(brightness);
+                return; // Don't care
+            }
+
+            // Block Type: Frame Data Packet - that's what we want
+            if(data[1] == TPM2NET_CMD_DATAFRAME) {
+                // Calculate frame size
+                char frameSize = data[2];
+                frameSize = (frameSize << 8) + data[3];
+        
+                // Use packetNumber to calculate offset
+                char packetNumber = data[4];
+                char totalPackets = data[5];
+        
+                // Calculate offset
+                uint16_t index = packetNumber * PIXELS_PER_PANEL;
+                uint16_t voxelIdx = TPM2NET_HEADER_SIZE;
+
+                // Start drawing!!
+                for(int z = NR_OF_PANELS-1; z >= 0; z--) {                  // We're only dealing in 2 dimensions (width & height)
+                    for(int col = 0; col < NR_OF_PANELS; col++) {           // Linewise, starting from leftmost index
+                        for(int row = NR_OF_PANELS - 1; row >= 0; row--) {  // Columnwise, starting from topmost index
+                            Color pixelColor = Color(data[voxelIdx], data[voxelIdx + 1], data[voxelIdx + 2]);  // Take 3 color bytes from buffer
+                            int idx = (row*64) + (z*8) + col;
+                            strip.setPixelColor(idx, strip.Color(pixelColor.red, pixelColor.green, pixelColor.blue));
+                        }
+                        voxelIdx+=3; // Increment buffer index by 3 bytes
+                    }
+                }
+                // Display!!
+                if(packetNumber == totalPackets) {
+                    strip.setBrightness(255);
+                    strip.show();
+                    Particle.process();    //process Spark events
+                    if(stop == TRUE) {
+                        strip.setBrightness(brightness);
+                        return;
+                    }
+                }
+            }
+        }
+    }
+}
