@@ -215,29 +215,29 @@ int getModeIndexFromName(String name);
 void fadeInToColor(uint32_t index, Color col);
 void fadeOutFromColor(uint32_t index, Color col);
 uint32_t Wheel(byte WheelPos);
-uint32_t getHighestValFromRGB(Color col);
-uint32_t lerpColor(uint32_t c1, uint32_t c2, uint32_t val, uint32_t minVal, uint32_t maxVal);
 Color getPixelColor(uint32_t index);
 Color getColorFromInteger(uint32_t col);
+uint32_t getHighestValFromRGB(Color col);
+uint32_t lerpColor(uint32_t c1, uint32_t c2, uint32_t val, uint32_t minVal, uint32_t maxVal);
 
 /* ======================= Spark Pixel Prototypes =============================== */
 int colorAll(uint32_t c);
 int colorWipe(uint32_t c);
 int colorZone(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4);
-void listen(void);
 void frozen(void);
-void rainbow(void);
+void listen(void);
 void collide(void);
+void rainbow(void);
 void cycleLerp(void);
 void cycleWipe(void);
 void color_fade(void);
 void colorPulse(void);
 void colorStripes(void);
-void rainbowCycle(void);
 void random_burst(void);
+void rainbowCycle(void);
 void flicker(uint32_t c);
-void police_lightsONE(void);
 void police_lightsALL(void);
+void police_lightsONE(void);
 void strobe(uint32_t color);
 void colorChaser(uint32_t c);
 void pulse_oneColorAll(void);
@@ -502,11 +502,11 @@ int colorAll(uint32_t c) {
                 strip.setPixelColor(i, 0);
             showPixels();
         }
-        else {
+        /*else {
             for(int i=0; i<strip.numPixels(); i++)
                 strip.setPixelColor(i, 0);
             showPixels();
-        }
+        }*/
     }
     return 1;
 }
@@ -514,6 +514,7 @@ int colorAll(uint32_t c) {
 void colorChaser(uint32_t c) {
     uint16_t i, j;
     Color c2 = getColorFromInteger(c);
+	run = TRUE;
 
     //Turn Off all pixels
     for(i=0; i<strip.numPixels(); i++)
@@ -631,6 +632,8 @@ int colorZone(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4) {
 //Fade through colors over all LEDs
 void color_fade() { //OK //-FADE ALL LEDS THROUGH HSV RAINBOW
    static int ihue = -1;
+   run = TRUE;
+   
    ihue++;
    if (ihue >= 255) {
       ihue = 0;
@@ -647,6 +650,7 @@ void color_fade() { //OK //-FADE ALL LEDS THROUGH HSV RAINBOW
 void random_burst() { //-RANDOM INDEX/COLOR
     static int idex = 0;
     static int ihue = 0;
+	run = TRUE;
 
     idex = random(0,PIXEL_CNT-1);
     ihue = random(0,255);
@@ -668,8 +672,9 @@ void flicker(uint32_t c) {
     int random_delay = random(1, map(speed, 1, 120, 100, 10)+1);
     uint32_t maxColorPixel = floor(max(ibright, getHighestValFromRGB(c1)));
     uint32_t increment = map(speed, 1, 120, maxColorPixel*.25, 5);
+	run = TRUE;
     
-    for(int j=maxColorPixel*.25; j<=maxColorPixel; j+=increment) {
+    for(int j=random(maxColorPixel*.25, (maxColorPixel*.5)+1); j<=maxColorPixel; j+=increment) {
         for(int i = 0; i < PIXEL_CNT; i++ ) {
             if(j <= c1.red) c2.red = j;
             if(j <= c1.green) c2.green = j;
@@ -697,6 +702,7 @@ void pulse_oneColorAll() { //-PULSE BRIGHTNESS ON ALL LEDS TO ONE COLOR
     static int xhue = Wheel(random(0, 256));
     static int bouncedirection = 0;
     int isteps = constrain(brightness*.03, .6, brightness*.25);
+	run = TRUE;
     
     if (bouncedirection == 0) {
     ival += isteps;
@@ -726,6 +732,7 @@ void police_light_strobo() {
     int middle = zone2End;
     static int color = 0;  
     static int left_right = 0;
+	run = TRUE;
     
     if (left_right > 19)
         left_right = 0;
@@ -762,6 +769,7 @@ void police_lightsALL() { //-POLICE LIGHTS (TWO COLOR SOLID)
     static int idex = 0;
     int idexR = idex;
     int idexB = antipodal_index(idexR);
+	run = TRUE;
     
     strip.setPixelColor(idexR, strip.Color(255, 0, 0));
     strip.setPixelColor(idexB, strip.Color(0, 0, 255));
@@ -781,6 +789,7 @@ void police_lightsONE() { //-POLICE LIGHTS (TWO COLOR SINGLE LED)
     int idexB = antipodal_index(idexR);
     Color red = {0xFF, 0, 0};
     Color blue = {0, 0, 0xFF};
+	run = TRUE;
     
     for(int i = 0; i < PIXEL_CNT; i++ ) {
         if (i == idexR)
@@ -806,6 +815,7 @@ void police_lightsONE() { //-POLICE LIGHTS (TWO COLOR SINGLE LED)
 void colorPulse() {
     uint16_t i, j;
     uint32_t pulseRate;
+	run = TRUE;
 
     for(j=0; j<=c2; j++) {
         for(i=0; i<strip.numPixels(); i++) {
@@ -822,6 +832,7 @@ void colorPulse() {
 void cycleLerp() {
     uint16_t i, j;
     uint32_t rate;
+	run = TRUE;
 
     for(j=0; j<=c2; j++) {
         for(i=0; i<strip.numPixels(); i++) {
@@ -837,6 +848,7 @@ void cycleLerp() {
 //Randomly fill the dots with colors interpolated between the 2 chosen colors
 void colorStripes() {
     uint16_t i, j;
+	run = TRUE;
 
     for(j=0; j<=c2; j++) {
         for(i=0; i<strip.numPixels(); i++)
@@ -845,7 +857,6 @@ void colorStripes() {
         if(stop == TRUE) {return;}
         delay(speed);
     }
-    return;
 }
 
 //Fill the dots one after the other with a color, wait (ms) after each one
@@ -893,13 +904,14 @@ void strobe(uint32_t color) {
     retVal = colorAll(strip.Color(0,0,0));  //Turn Off all Pixels
     if(stop == TRUE || retVal == 0) {return;}
 	delay(speed);
-    
+   
     //colorAll turns off the run loop, so let's turn it back on
     run = TRUE;
 }
 
 void rainbow(void) {
     uint16_t i, j;
+	run = TRUE;
     
     for(j=0; j<256; j++) {
         for(i=0; i<strip.numPixels(); i++)
@@ -913,6 +925,7 @@ void rainbow(void) {
 // Slightly different, this makes the rainbow equally distributed throughout, then wait (ms)
 void rainbowCycle(void) {
   uint16_t i, j;
+  run = TRUE;
 
     for(j=0; j<256; j++) { // 1 cycle of all colors on wheel
         for(i=0; i< strip.numPixels(); i++)
@@ -925,6 +938,8 @@ void rainbowCycle(void) {
 
 //Theatre-style crawling lights with rainbow effect
 void theaterChaseRainbow(void) {
+	run = TRUE;
+
     for (uint16_t j=0; j < 256; j++) {                          //cycle all 256 colors in the wheel
         for (uint16_t q=0; q < 3; q++) {
             for (int i=0; i < strip.numPixels(); i=i+3)
@@ -953,6 +968,7 @@ void frozen(void) {
     unsigned long previousMillis = millis();
     unsigned long flakeLifeSpan = random(MIN_DELAY, MAX_DELAY); //How long will a snowflake last
     int increment = constrain(map(speed, 1, 120, 4, 8), 4, 8);  //How fast/slow a snowflake will dim
+	run = TRUE;
     
     //forwards
     for(j=startColor; j<stopColor; j++) { 	//cycle through the colors
@@ -1043,7 +1059,8 @@ void findRandomSnowFlakesPositions(int numFlakes) {
 //When they meet, they eplode into the combined color
 void collide(void) {
 	uint16_t i, j, color1, color2;
-	//uint16_t startColor = 0;    
+	//uint16_t startColor = 0;
+	run = TRUE;
 	
 	for(color1=0; color1<=255; color1+=85) {
 	//for(color1=0; color1<=255; color1+=170) {
