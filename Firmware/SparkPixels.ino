@@ -1,5 +1,12 @@
 /**
  ******************************************************************************
+ * @extended SparkPixels.ino:
+ *		New mode: ZONE CHASER
+ *		Improved modes: POLICE LIGHTS CHASER, POLICE LIGHTS WIPE
+ * @author   Werner Moecke
+ * @version  V1.0.3
+ * @date     05-October-2015 ~ 07-October-2015
+ *
  * @extended SparkPixels.ino - New modes:
  *		ACID DREAM, COLOR BREATHE, COLOR PULSE, COLOR STRIPES, COLOR TRANSITION
  *		FLICKER, POLICE LIGHTS, POLICE LIGHTS CHASER, POLICE LIGHTS WIPE, 
@@ -70,6 +77,7 @@ const int POLICELIGHTS                = 18;
 const int POLICELIGHTSWIPE            = 19;
 const int POLICELIGHTSONE             = 20;
 const int LISTENER                    = 21;
+const int ZONECHASER                  = 22;
 
 typedef struct modeParams
 {
@@ -117,7 +125,8 @@ modeParams modeStruct[] =
         {  RAINBOW,                     "RAINBOW",              0   },
         {  RAINBOW_BURST,               "RAINBOW BURST",        0   },
         {  THEATERCHASE,                "THEATER CHASE",	    0   },
-        {  ZONE,                        "ZONE",				    4   }
+        {  ZONE,                        "ZONE",				    4   },
+        {  ZONECHASER,                  "ZONE CHASER",			4   }
 };
 
 //Preset speed constants
@@ -244,6 +253,7 @@ void pulse_oneColorAll(void);
 void police_light_strobo(void);
 void theaterChaseRainbow(void);
 void findRandomSnowFlakesPositions(int numFlakes);
+void colorZoneChaser(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4);
 
 //DISABLED, AS IT INTERFERES WITH UDP LISTENING, PLUS IT IS NO LONGER NECESSARY ON THE PHOTON
 //Don't connect to the cloud first so we can turn on the lights right away
@@ -330,6 +340,9 @@ void loop() {
     			break;
     		case ZONE:
     	        colorZone(color1, color2, color3, color4); 
+    	        break;
+    		case ZONECHASER:
+    	        colorZoneChaser(color1, color2, color3, color4); 
     	        break;
     		case COLORPULSE:
     		    colorPulse();
@@ -512,60 +525,44 @@ int colorAll(uint32_t c) {
 }
 
 void colorChaser(uint32_t c) {
-    uint16_t i, j;
-    Color c2 = getColorFromInteger(c);
+    static int idex = 0;
+    static bool bounce = false;
+    Color c1, c2 = getColorFromInteger(c);
+    uint32_t maxColorPixel = getHighestValFromRGB(c2);
+    uint32_t increment = map(speed, 1, 120, maxColorPixel*.25, 5);
 	run = TRUE;
 
-    //Turn Off all pixels
-    for(i=0; i<strip.numPixels(); i++)
-        strip.setPixelColor(i, 0);
-    showPixels();
+    for(int i=0; i<=0xFF; i+=increment) {
+        //Slowly fade in the currently indexed pixel to the chosen color
+        if(i <= c2.red) c1.red = i;
+        if(i <= c2.green) c1.green = i;
+        if(i <= c2.blue) c1.blue = i;
+        strip.setPixelColor(idex, strip.Color(c1.red, c1.green, c1.blue));
 
-    //Forward
-    for(i=zone1Start; i<=zone2End; i++) {
-        fadeInToColor(i, c2);
-        if(i > zone1Start)
-            fadeOutFromColor(i-1, c2);
+        //Then slowly fade out previously-lit pixels to black, leaving a nice "trailing" effect
+        for(int j=0; j<PIXEL_CNT; j++) {
+            if (j != idex) {
+                Color pixelColor = getColorFromInteger(strip.getPixelColor(j));
+                if(pixelColor.red > 0) pixelColor.red-=pixelColor.red*.125;
+                if(pixelColor.green > 0) pixelColor.green-=pixelColor.green*.125;
+                if(pixelColor.blue > 0) pixelColor.blue-=pixelColor.blue*.125;
+                strip.setPixelColor(j, strip.Color(pixelColor.red, pixelColor.green, pixelColor.blue));
+            }
+        }
+        showPixels();
         if(stop == TRUE) {return;}
-    	delay(speed);
-    }
-    strip.setPixelColor(zone2End, 0);
-    for(i=zone2End; i<=zone3End; i++) {
-        fadeInToColor(i, c2);
-        fadeOutFromColor(i-1, c2);
-        if(stop == TRUE) {return;}
-    	delay(speed);
-    }
-    strip.setPixelColor(zone3End, 0);
-    for(i=zone3End; i<zone4End; i++) {
-        fadeInToColor(i, c2);
-        fadeOutFromColor(i-1, c2);
-        if(stop == TRUE) {return;}
-    	delay(speed);
+        delay(speed);
     }
     
-    //Reverse
-    strip.setPixelColor(zone4End, 0);
-    for(i=zone4End-1; i>=zone3End; i--) {
-        fadeInToColor(i, c2);
-        if(i < zone4End)
-            fadeOutFromColor(i+1, c2);
-        if(stop == TRUE) {return;}
-    	delay(speed);
+    if(bounce) {idex--;} else {idex++;}
+    
+    if (idex <= 0) {
+        idex = 0;
+        bounce = false;
     }
-    strip.setPixelColor(zone3End, 0);
-    for(i=zone3End; i>=zone2End; i--) {
-        fadeInToColor(i, c2);
-        fadeOutFromColor(i+1, c2);
-        if(stop == TRUE) {return;}
-    	delay(speed);
-    }
-    strip.setPixelColor(zone2End, 0);
-    for(i=zone2End; i>zone1Start; i--) {
-        fadeInToColor(i, c2);
-        fadeOutFromColor(i+1, c2);
-        if(stop == TRUE) {return;}
-    	delay(speed);
+    if (idex >= PIXEL_CNT) {
+        idex = PIXEL_CNT-2;
+        bounce = true;
     }
 }
 
@@ -629,6 +626,103 @@ int colorZone(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4) {
     }
     return 1;
 }
+
+//Creates 4 color zones, with each one having its own "chaser pixel"
+void colorZoneChaser(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4) {
+    static int idexZone1 = random(zone1Start, zone1End+1);
+    static int idexZone2 = random(zone2Start, zone2End+1);
+    static int idexZone3 = random(zone3Start, zone3End+1);
+    static int idexZone4 = random(zone4Start, zone4End);
+    static bool bounce1 = false;
+    static bool bounce2 = false;
+    static bool bounce3 = false;
+    static bool bounce4 = false;
+    Color col1 = getColorFromInteger(c1);
+    Color col2 = getColorFromInteger(c2);
+    Color col3 = getColorFromInteger(c3);
+    Color col4 = getColorFromInteger(c4);
+    Color colZ1, colZ2, colZ3, colZ4;
+    uint32_t maxColorPixel = max(max(getHighestValFromRGB(col1), getHighestValFromRGB(col2)), max(getHighestValFromRGB(col3), getHighestValFromRGB(col4)));
+    uint32_t increment = map(speed, 1, 120, maxColorPixel*.25, 5);
+	run = TRUE;
+    
+    for(int i=0; i<=maxColorPixel; i+=increment) {
+        //Slowly fade in the currently indexed pixels to blue and red
+        if(i <= col1.red) colZ1.red = i;
+        if(i <= col1.green) colZ1.green = i;
+        if(i <= col1.blue) colZ1.blue = i;
+        if(i <= col2.red) colZ2.red = i;
+        if(i <= col2.green) colZ2.green = i;
+        if(i <= col2.blue) colZ2.blue = i;
+        if(i <= col3.red) colZ3.red = i;
+        if(i <= col3.green) colZ3.green = i;
+        if(i <= col3.blue) colZ3.blue = i;
+        if(i <= col4.red) colZ4.red = i;
+        if(i <= col4.green) colZ4.green = i;
+        if(i <= col4.blue) colZ4.blue = i;
+        strip.setPixelColor(idexZone1, strip.Color(colZ1.red, colZ1.green, colZ1.blue));
+        strip.setPixelColor(idexZone2, strip.Color(colZ2.red, colZ2.green, colZ2.blue));
+        strip.setPixelColor(idexZone3, strip.Color(colZ3.red, colZ3.green, colZ3.blue));
+        strip.setPixelColor(idexZone4, strip.Color(colZ4.red, colZ4.green, colZ4.blue));
+        
+        //Then slowly fade out previously-lit pixels to black, leaving a nice "trailing" effect
+        for(int j=0; j<PIXEL_CNT; j++) {
+            if ((j != idexZone1) && (j != idexZone2) && (j != idexZone3) && (j != idexZone4)) {
+                Color pixelColor = getColorFromInteger(strip.getPixelColor(j));
+                if(pixelColor.red > 0) pixelColor.red-=pixelColor.red*.125;
+                if(pixelColor.green > 0) pixelColor.green-=pixelColor.green*.125;
+                if(pixelColor.blue > 0) pixelColor.blue-=pixelColor.blue*.125;
+                strip.setPixelColor(j, strip.Color(pixelColor.red, pixelColor.green, pixelColor.blue));
+            }
+        }
+        showPixels();
+        if(stop == TRUE) {return;}
+        delay(speed);
+    }
+  
+    //Check direction
+    if(bounce1) {idexZone1--;} else {idexZone1++;}
+    if(bounce2) {idexZone2--;} else {idexZone2++;}
+    if(bounce3) {idexZone3--;} else {idexZone3++;}
+    if(bounce4) {idexZone4--;} else {idexZone4++;}
+    
+    //Check beginning-of-trail
+    if (idexZone1 <= zone1Start) {
+        idexZone1 = zone1Start;
+        bounce1 = false;
+    }
+    if (idexZone2 <= zone2Start) {
+        idexZone2 = zone2Start;
+        bounce2 = false;
+    }
+    if (idexZone3 <= zone3Start) {
+        idexZone3 = zone3Start;
+        bounce3 = false;
+    }
+    if (idexZone4 <= zone4Start) {
+        idexZone4 = zone4Start;
+        bounce4 = false;
+    }
+    
+    //Check end-of-trail
+    if (idexZone1 >= zone1End) {
+        idexZone1 = zone1End;
+        bounce1 = true;
+    }
+    if (idexZone2 >= zone2End) {
+        idexZone2 = zone2End;
+        bounce2 = true;
+    }
+    if (idexZone3 >= zone3End) {
+        idexZone3 = zone3End;
+        bounce3 = true;
+    }
+    if (idexZone4 >= zone4End-1) {
+        idexZone4 = zone4End-1;
+        bounce4 = true;
+    }
+}
+
 //Fade through colors over all LEDs
 void color_fade() { //OK //-FADE ALL LEDS THROUGH HSV RAINBOW
    static int ihue = -1;
@@ -680,20 +774,12 @@ void flicker(uint32_t c) {
             if(j <= c1.green) c2.green = j;
             if(j <= c1.blue) c2.blue = j;
             strip.setPixelColor(i, strip.Color(c2.red, c2.green, c2.blue));
-            //strip.setPixelColor(i, c);
         }
-    	//strip.setBrightness(ibright);
         strip.show();
         if(stop == TRUE) {return;}
         Particle.process();    //process Spark events
         delay(random_delay);
     }
-
-	/*strip.setBrightness(ibright);
-    strip.show();
-    if(stop == TRUE) {return;}
-    Particle.process();    //process Spark events
-    delay(random_delay);*/
 }
 
 //Fade in/out a color using brightness/saturation
@@ -769,13 +855,29 @@ void police_lightsALL() { //-POLICE LIGHTS (TWO COLOR SOLID)
     static int idex = 0;
     int idexR = idex;
     int idexB = antipodal_index(idexR);
+    uint32_t increment = map(speed, 1, 120, 0xFF*.25, 5);
+    Color colR, red = {0xFF, 0, 0};
+    Color colB, blue = {0, 0, 0xFF};
 	run = TRUE;
     
-    strip.setPixelColor(idexR, strip.Color(255, 0, 0));
-    strip.setPixelColor(idexB, strip.Color(0, 0, 255));
-    showPixels();
-    if(stop == TRUE) {return;}
-    delay(speed);
+    for(int i=0; i<=0xFF; i+=increment) {
+        if(i <= red.red) colR.red = i;
+        if(i <= red.green) colR.green = i;
+        if(i <= red.blue) colR.blue = i;
+        if(i <= blue.red) colB.red = i;
+        if(i <= blue.green) colB.green = i;
+        if(i <= blue.blue) colB.blue = i;
+        strip.setPixelColor(idexR, strip.Color(colR.red, colR.green, colR.blue));
+        strip.setPixelColor(idexB, strip.Color(colB.red, colB.green, colB.blue));
+        showPixels();
+        if(stop == TRUE) {return;}
+        delay(speed);
+    }
+    //strip.setPixelColor(idexR, strip.Color(255, 0, 0));
+    //strip.setPixelColor(idexB, strip.Color(0, 0, 255));
+    //showPixels();
+    //if(stop == TRUE) {return;}
+    //delay(speed);
   
     idex++;
     if (idex >= PIXEL_CNT)
@@ -787,25 +889,36 @@ void police_lightsONE() { //-POLICE LIGHTS (TWO COLOR SINGLE LED)
     static int idex = 0;
     int idexR = idex;
     int idexB = antipodal_index(idexR);
-    Color red = {0xFF, 0, 0};
-    Color blue = {0, 0, 0xFF};
+    uint32_t increment = map(speed, 1, 120, 0xFF*.25, 5);
+    Color colR, red = {0xFF, 0, 0};
+    Color colB, blue = {0, 0, 0xFF};
 	run = TRUE;
     
-    for(int i = 0; i < PIXEL_CNT; i++ ) {
-        if (i == idexR)
-            fadeInToColor(i, red);
-        else if (i == idexB)
-            fadeInToColor(i, blue);
-        else {
-            for(int i=0; i<strip.numPixels(); i++) {
-                uint32_t pixelColor = strip.getPixelColor(i);
-                if(pixelColor > 0)
-                    fadeOutFromColor(i, getColorFromInteger(pixelColor));
+    for(int i=0; i<=0xFF; i+=increment) {
+        //Slowly fade in the currently indexed pixels to blue and red
+        if(i <= red.red) colR.red = i;
+        if(i <= red.green) colR.green = i;
+        if(i <= red.blue) colR.blue = i;
+        if(i <= blue.red) colB.red = i;
+        if(i <= blue.green) colB.green = i;
+        if(i <= blue.blue) colB.blue = i;
+        strip.setPixelColor(idexR, strip.Color(colR.red, colR.green, colR.blue));
+        strip.setPixelColor(idexB, strip.Color(colB.red, colB.green, colB.blue));
+        
+        //Then slowly fade out previously-lit pixels to black, leaving a nice "trailing" effect
+        for(int j=0; j<PIXEL_CNT; j++) {
+            if ((j != idexR) && (j != idexB)) {
+                Color pixelColor = getColorFromInteger(strip.getPixelColor(j));
+                if(pixelColor.red > 0) pixelColor.red-=pixelColor.red*.125;
+                if(pixelColor.green > 0) pixelColor.green-=pixelColor.green*.125;
+                if(pixelColor.blue > 0) pixelColor.blue-=pixelColor.blue*.125;
+                strip.setPixelColor(j, strip.Color(pixelColor.red, pixelColor.green, pixelColor.blue));
             }
         }
+        showPixels();
         if(stop == TRUE) {return;}
+        delay(speed);
     }
-    delay(speed);
   
     idex++;
     if (idex >= PIXEL_CNT) idex = 0;
