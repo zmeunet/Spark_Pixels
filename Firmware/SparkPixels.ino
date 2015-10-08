@@ -2,7 +2,7 @@
  ******************************************************************************
  * @extended SparkPixels.ino:
  *		New mode: ZONE CHASER
- *		Improved modes: POLICE LIGHTS CHASER, POLICE LIGHTS WIPE
+ *		Improved modes: CHASER, POLICE LIGHTS CHASER, POLICE LIGHTS WIPE
  * @author   Werner Moecke
  * @version  V1.0.3
  * @date     05-October-2015 ~ 07-October-2015
@@ -255,9 +255,10 @@ void theaterChaseRainbow(void);
 void findRandomSnowFlakesPositions(int numFlakes);
 void colorZoneChaser(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4);
 
-//DISABLED, AS IT INTERFERES WITH UDP LISTENING, PLUS IT IS NO LONGER NECESSARY ON THE PHOTON
+/************** DISABLED AS IT INTERFERES WITH UDP LISTENING **************/
 //Don't connect to the cloud first so we can turn on the lights right away
-//SYSTEM_MODE(SEMI_AUTOMATIC);   
+//SYSTEM_MODE(SEMI_AUTOMATIC);
+/**************************************************************************/
 
 void setup() {
     Particle.function("SetMode", SetMode);
@@ -286,9 +287,9 @@ void setup() {
     run = FALSE;
     stop = FALSE;
 	setNewMode(getModeIndexFromID(NORMAL));
-	defaultColor = strip.Color((255 * .5),(255 * .5),(60 * .5));    // This seems close to incandescent color
+	defaultColor = strip.Color((255*.25),(255*.25),(60*.25)); //This seems close to incandescent color
 	snowFlakeColor = getColorFromInteger(0xFFFFFF);
-	lastSync = lastCommandReceived = previousMillis = millis();     // Take a time stamp
+	lastSync = lastCommandReceived = previousMillis = millis();     //Take a time stamp
     
     // seed the random number generator.  THINGS WILL NEVER BE THE SAME AGAIN
     uint32_t seed = millis(); 
@@ -873,12 +874,7 @@ void police_lightsALL() { //-POLICE LIGHTS (TWO COLOR SOLID)
         if(stop == TRUE) {return;}
         delay(speed);
     }
-    //strip.setPixelColor(idexR, strip.Color(255, 0, 0));
-    //strip.setPixelColor(idexB, strip.Color(0, 0, 255));
-    //showPixels();
-    //if(stop == TRUE) {return;}
-    //delay(speed);
-  
+
     idex++;
     if (idex >= PIXEL_CNT)
         idex = 0;
@@ -886,9 +882,10 @@ void police_lightsALL() { //-POLICE LIGHTS (TWO COLOR SOLID)
 
 //Police Light one LED blue and red
 void police_lightsONE() { //-POLICE LIGHTS (TWO COLOR SINGLE LED)
-    static int idex = 0;
-    int idexR = idex;
-    int idexB = antipodal_index(idexR);
+    static int idexR = random(zone1Start, zone2End+1);  //idex;
+    static int idexB = random(zone3Start, zone4End);    //antipodal_index(idexR);
+    static bool bounceR = false;
+    static bool bounceB = false;
     uint32_t increment = map(speed, 1, 120, 0xFF*.25, 5);
     Color colR, red = {0xFF, 0, 0};
     Color colB, blue = {0, 0, 0xFF};
@@ -919,9 +916,30 @@ void police_lightsONE() { //-POLICE LIGHTS (TWO COLOR SINGLE LED)
         if(stop == TRUE) {return;}
         delay(speed);
     }
-  
-    idex++;
-    if (idex >= PIXEL_CNT) idex = 0;
+    
+    //Check direction
+    if(bounceR) {idexR--;} else {idexR++;}
+    if(bounceB) {idexB--;} else {idexB++;}
+    
+    //Check beginning-of-trail
+    if (idexR <= zone1Start) {
+        idexR = zone1Start;
+        bounceR = false;
+    }
+    if (idexB <= zone3Start) {
+        idexB = zone3Start;
+        bounceB = false;
+    }
+    
+    //Check end-of-trail
+    if (idexR >= zone2End) {
+        idexR = zone2End;
+        bounceR = true;
+    }
+    if (idexB >= zone4End-1) {
+        idexB = zone4End-1;
+        bounceB = true;
+    }
 }
 
 //Pulse all dots with pseudo-random colors
