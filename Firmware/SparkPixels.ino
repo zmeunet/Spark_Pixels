@@ -1,11 +1,11 @@
 /**
  ******************************************************************************
  * @extended SparkPixels.ino:
- *		New mode: ZONE CHASER
- *		Improved modes: CHASER, POLICE LIGHTS CHASER, POLICE LIGHTS WIPE
+ *		New mode: AUDIO SPECTRUM
+ *		Fixed modes: CHASER, POLICE LIGHTS CHASER, POLICE LIGHTS WIPE
  * @author   Werner Moecke
- * @version  V1.0.3
- * @date     05-October-2015 ~ 07-October-2015
+ * @version  V1.0.5
+ * @date     08-October-2015 ~ 10-October-2015
  *
  * @extended SparkPixels.ino - New modes:
  *		ACID DREAM, COLOR BREATHE, COLOR PULSE, COLOR STRIPES, COLOR TRANSITION
@@ -1667,7 +1667,7 @@ void FFTJoy() {
         Color pixelColor;
         int y;
     	for(y=0;y<=imaginary[i];y++) {
-          	pixelColor=getColorFromInteger(colorMap(y,0,SIDE));
+          	pixelColor=getColorFromInteger(colorMap(y,0,SIDE+2));
             strip.setPixelColor(((SIDE-1)*SIDE*SIDE) + (i*SIDE) + y, strip.Color(pixelColor.red, pixelColor.green, pixelColor.blue));
     		if(DOTMODE) {
                 pixelColor=black;
