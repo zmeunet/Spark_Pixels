@@ -1,11 +1,11 @@
 /**
  ******************************************************************************
  * @extended SparkPixels.ino:
- *		New mode: AUDIO SPECTRUM
- *		Fixed modes: CHASER, POLICE LIGHTS CHASER, POLICE LIGHTS WIPE
+ *		New mode: ZONE CHASER
+ *		Improved modes: CHASER, POLICE LIGHTS CHASER, POLICE LIGHTS WIPE
  * @author   Werner Moecke
- * @version  V1.0.5
- * @date     08-October-2015 ~ 10-October-2015
+ * @version  V1.0.3
+ * @date     05-October-2015 ~ 07-October-2015
  *
  * @extended SparkPixels.ino - New modes:
  *		ACID DREAM, COLOR BREATHE, COLOR PULSE, COLOR STRIPES, COLOR TRANSITION
@@ -240,14 +240,17 @@ UDP Udp;    //an UDP instance to let us receive packets over UDP
 /* ======================= AUDIO SPECTRUM mode defines ======================= */
 #define MICROPHONE              12
 #define GAIN_CONTROL            11
+#define SMOOTH_SW               D2
+#define MODE_BT                 D3
 #define SIDE                    NR_OF_PANELS // 8
 #define TRAIL_LENGTH            50
 #define SAMPLES                 2048
 #define M                       4   // If the M value changes, then the 'ARRAY_SIZE' constant also needs
 #define ARRAY_SIZE              16  // to be changed to reflect the result of the formula: pow(2,M)
 #define INPUTLEVEL              63  // This sets the sensitivity for the onboard AGC circuit (0-255); the higher, the more sensitive
-#define SMOOTHLEDS              ON  // Switch for 'smoothening-out' the LEDs fade-to-black on the spectrum
+#define SMOOTH                  ON  // Switch for 'smoothening-out' the LEDs fade-to-black on the spectrum
 #define DOTMODE                 ON  // Switch to control how the peaks will be displayed over each strip (bar/dot)
+bool smooth, dotMode;
 float real[ARRAY_SIZE];             //[(int)pow(2,M)]
 float imaginary[ARRAY_SIZE];        //[(int)pow(2,M)]
 float maxVal=8;
@@ -284,6 +287,8 @@ void cycleLerp(void);
 void cycleWipe(void);
 void color_fade(void);
 void colorPulse(void);
+void modeButton(void);
+void smoothSwitch(void);
 void colorStripes(void);
 void random_burst(void);
 void rainbowCycle(void);
@@ -364,6 +369,14 @@ void setup() {
     
     // Initialize audio capture
     initMicrophone();
+    
+    // Set the inputs for the AUDIO SPECTRUM mode
+    pinMode(MODE_BT, INPUT_PULLUP);
+    pinMode(SMOOTH_SW, INPUT_PULLUP);
+    smooth = !digitalRead(SMOOTH_SW);
+    dotMode = digitalRead(MODE_BT);
+    attachInterrupt(MODE_BT, modeButton, FALLING);
+    attachInterrupt(SMOOTH_SW, smoothSwitch, CHANGE);
 }
 
 //delay (or speed) is passed 
@@ -1669,9 +1682,9 @@ void FFTJoy() {
     	for(y=0;y<=imaginary[i];y++) {
           	pixelColor=getColorFromInteger(colorMap(y,0,SIDE+2));
             strip.setPixelColor(((SIDE-1)*SIDE*SIDE) + (i*SIDE) + y, strip.Color(pixelColor.red, pixelColor.green, pixelColor.blue));
-    		if(DOTMODE) {
+    		if(dotMode) {
                 pixelColor=black;
-                if(SMOOTHLEDS) {
+                if(smooth) {
                     pixelColor=getPixelColor(((SIDE-1)*SIDE*SIDE) + (i*SIDE) + (y>0 ? y-1 : 1));
                     //this creates a fading 'trail' across the y-axis from the base of the
                   	//cube towards the peak; gotta fade the pixels *much* faster, so that 
@@ -1688,7 +1701,7 @@ void FFTJoy() {
     	
     	for(;y<SIDE;y++) {
             pixelColor=black;
-            if(SMOOTHLEDS) {
+            if(smooth) {
                 pixelColor=getPixelColor(((SIDE-1)*SIDE*SIDE) + (i*SIDE) + y);
               	//fade the pixels as the audio level drops; causes a nice and smooth 
               	//'trailing' effect from the top of the cube (y-axis) towards the peak
@@ -1706,7 +1719,7 @@ void FFTJoy() {
         for(int x=0;x<SIDE;x++)
             for(int y=0;y<SIDE;y++) {
                 Color trailColor=getPixelColor(((z+1)*SIDE*SIDE) + (x*SIDE) + y);
-                if(SMOOTHLEDS) {
+                if(smooth) {
                     //fade the trail to black over the length of the cube's z-axis
                   	//this is responsible for the 'meteors' shooting towards the back of 
                   	//the cube; otherwise it would look like they were 'going backwards'
@@ -1722,6 +1735,14 @@ void FFTJoy() {
     maxVal= (maxVal>=120) ? maxVal-2 : (maxVal<8) ? 8 : maxVal-.8;
     showPixels();
     if(stop == TRUE) {return;}
+}
+
+void smoothSwitch() {
+    smooth = !digitalRead(SMOOTH_SW);
+}
+
+void modeButton() {
+    dotMode = !dotMode;
 }
 
 void initMicrophone() {
