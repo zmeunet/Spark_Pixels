@@ -710,7 +710,7 @@ void colorZoneChaser(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4) {
 	run = TRUE;
     
     for(int i=0; i<=maxColorPixel; i+=increment) {
-        //Slowly fade in the currently indexed pixels to blue and red
+        //Slowly fade in the currently indexed pixels
         if(i <= col1.red) colZ1.red = i;
         if(i <= col1.green) colZ1.green = i;
         if(i <= col1.blue) colZ1.blue = i;
@@ -1678,58 +1678,64 @@ void FFTJoy() {
     for(int i=0;i<pow(2,M)/2;i++) {
         imaginary[i]=SIDE*imaginary[i]/maxVal;
         Color pixelColor;
-        int y;
+        int y, pixIdx, pixUppIdx, pixLowIdx;
     	for(y=0;y<=imaginary[i];y++) {
           	pixelColor=getColorFromInteger(colorMap(y,0,SIDE+2));
-            strip.setPixelColor(((SIDE-1)*SIDE*SIDE) + (i*SIDE) + y, strip.Color(pixelColor.red, pixelColor.green, pixelColor.blue));
+          	pixIdx=(((SIDE-1)*SIDE*SIDE) + (i*SIDE) + y);
+            strip.setPixelColor(pixIdx, strip.Color(pixelColor.red, pixelColor.green, pixelColor.blue));
     		if(dotMode) {
+    		    //Down-top fade/blanking
                 pixelColor=black;
-                if(smooth) {
-                    pixelColor=getPixelColor(((SIDE-1)*SIDE*SIDE) + (i*SIDE) + (y>0 ? y-1 : 1));
-                    //this creates a fading 'trail' across the y-axis from the base of the
-                  	//cube towards the peak; gotta fade the pixels *much* faster, so that 
-                  	//the human eye can spot the 'trailing' effect in 'dot' mode
-                    if(pixelColor.red > 0) pixelColor.red-=pixelColor.red*.25;
-                    if(pixelColor.green > 0) pixelColor.green-=pixelColor.green*.25;
-                    if(pixelColor.blue > 0) pixelColor.blue-=pixelColor.blue*.25;
+                pixLowIdx=pixIdx-(pixIdx%SIDE);
+                for(int j=pixLowIdx; j<pixIdx; j++) {
+                    if(smooth) {
+                        pixelColor=getPixelColor(j);
+                        //This causes a nice and smooth 'trailing' effect from the base of
+                      	//the cube towards the peak; gotta fade the pixels faster, so that 
+                      	//the human eye can spot the 'trailing' effect in 'dot' mode
+                        if(pixelColor.red > 0) pixelColor.red-=pixelColor.red*.4;
+                        if(pixelColor.green > 0) pixelColor.green-=pixelColor.green*.4;
+                        if(pixelColor.blue > 0) pixelColor.blue-=pixelColor.blue*.4;
+                    }
+        			strip.setPixelColor(j, strip.Color(pixelColor.red, pixelColor.green, pixelColor.blue));
+                    if(stop == TRUE) {return;}
                 }
-    			strip.setPixelColor(((SIDE-1)*SIDE*SIDE) + (i*SIDE) + (y>0 ? y-1 : 1), strip.Color(pixelColor.red, pixelColor.green, pixelColor.blue));
-    			delayMicroseconds(speed);  //introducing a little bit of delay to 'smoothen-out' transitions
             }
-            if(stop == TRUE) {return;}
     	}
     	
-    	for(;y<SIDE;y++) {
-            pixelColor=black;
+        //Topdown fade/blanking
+        pixelColor=black;
+        pixUppIdx=pixIdx+(SIDE-(pixIdx%SIDE));
+        for(int j=pixUppIdx-1; j>pixIdx; j--) {
             if(smooth) {
-                pixelColor=getPixelColor(((SIDE-1)*SIDE*SIDE) + (i*SIDE) + y);
-              	//fade the pixels as the audio level drops; causes a nice and smooth 
-              	//'trailing' effect from the top of the cube (y-axis) towards the peak
-                if(pixelColor.red > 0) pixelColor.red-=pixelColor.red*.25;
-                if(pixelColor.green > 0) pixelColor.green-=pixelColor.green*.25;
-                if(pixelColor.blue > 0) pixelColor.blue-=pixelColor.blue*.25;
+                pixelColor=getPixelColor(j);
+              	//This causes a nice and smooth 'trailing' effect
+              	//from the top of the cube (y-axis) towards the peak
+                if(pixelColor.red > 0) pixelColor.red-=pixelColor.red*.125;
+                if(pixelColor.green > 0) pixelColor.green-=pixelColor.green*.125;
+                if(pixelColor.blue > 0) pixelColor.blue-=pixelColor.blue*.125;
             }
-            strip.setPixelColor(((SIDE-1)*SIDE*SIDE) + (i*SIDE) + y, strip.Color(pixelColor.red, pixelColor.green, pixelColor.blue));
-            delayMicroseconds(speed);  //introducing a little bit of delay to 'smoothen-out' transitions
+            strip.setPixelColor(j, strip.Color(pixelColor.red, pixelColor.green, pixelColor.blue));
             if(stop == TRUE) {return;}
-    	}
+        }
     }
     
+    //Fade the 'trail' to black over the length of the cube's z-axis
     for(int z=0;z<SIDE-1;z++)
         for(int x=0;x<SIDE;x++)
             for(int y=0;y<SIDE;y++) {
-                Color trailColor=getPixelColor(((z+1)*SIDE*SIDE) + (x*SIDE) + y);
+                int pixIdx=((z+1)*SIDE*SIDE) + (x*SIDE) + y;
+                Color trailColor=getPixelColor(pixIdx);
                 if(smooth) {
-                    //fade the trail to black over the length of the cube's z-axis
-                  	//this is responsible for the 'meteors' shooting towards the back of 
+                  	//This is responsible for the 'meteors' shooting towards the back of 
                   	//the cube; otherwise it would look like they were 'going backwards'
                     if(trailColor.red > 0) trailColor.red-=trailColor.red*.125;
                     if(trailColor.green > 0) trailColor.green-=trailColor.green*.125;
                     if(trailColor.blue > 0) trailColor.blue-=trailColor.blue*.125;
                 }
                 strip.setPixelColor((z*SIDE*SIDE) + (x*SIDE) + y, strip.Color(trailColor.red, trailColor.green, trailColor.blue));
-                delayMicroseconds(speed);  //introducing a little bit of delay to 'smoothen-out' transitions
                 if(stop == TRUE) {return;}
+                delayMicroseconds(speed);  //introducing a little bit of delay to 'smoothen-out' transitions
             }
     
     maxVal= (maxVal>=120) ? maxVal-2 : (maxVal<8) ? 8 : maxVal-.8;
