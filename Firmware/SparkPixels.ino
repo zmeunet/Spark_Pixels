@@ -1711,9 +1711,9 @@ void FFTJoy() {
                 pixelColor=getPixelColor(j);
               	//This causes a nice and smooth 'trailing' effect
               	//from the top of the cube (y-axis) towards the peak
-                if(pixelColor.red > 0) pixelColor.red-=pixelColor.red*(map(pixIdx%SIDE, 0, SIDE-1, 1, SIDE-2)*.06);
-                if(pixelColor.green > 0) pixelColor.green-=pixelColor.green*(map(pixIdx%SIDE, 0, SIDE-1, 1, SIDE-2)*.06);
-                if(pixelColor.blue > 0) pixelColor.blue-=pixelColor.blue*(map(pixIdx%SIDE, 0, SIDE-1, 1, SIDE-2)*.06);
+                if(pixelColor.red > 0) pixelColor.red-=pixelColor.red*(map(pixIdx%SIDE, 0, SIDE-1, 1, SIDE-2)*.08);
+                if(pixelColor.green > 0) pixelColor.green-=pixelColor.green*(map(pixIdx%SIDE, 0, SIDE-1, 1, SIDE-2)*.08);
+                if(pixelColor.blue > 0) pixelColor.blue-=pixelColor.blue*(map(pixIdx%SIDE, 0, SIDE-1, 1, SIDE-2)*.08);
             }
             strip.setPixelColor(j, strip.Color(pixelColor.red, pixelColor.green, pixelColor.blue));
             if(stop == TRUE) {return;}
