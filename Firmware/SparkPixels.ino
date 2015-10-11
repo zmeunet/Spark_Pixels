@@ -1693,9 +1693,9 @@ void FFTJoy() {
                         //This causes a nice and smooth 'trailing' effect from the base of
                       	//the cube towards the peak; gotta fade the pixels faster, so that 
                       	//the human eye can spot the 'trailing' effect in 'dot' mode
-                        if(pixelColor.red > 0) pixelColor.red-=pixelColor.red*(map(pixIdx%SIDE, 0, SIDE-1, SIDE-1, 0)*.1);
-                        if(pixelColor.green > 0) pixelColor.green-=pixelColor.green*(map(pixIdx%SIDE, 0, SIDE-1, SIDE-1, 0)*.1);
-                        if(pixelColor.blue > 0) pixelColor.blue-=pixelColor.blue*(map(pixIdx%SIDE, 0, SIDE-1, SIDE-1, 0)*.1);
+                        if(pixelColor.red > 0) pixelColor.red-=pixelColor.red*(map(pixIdx%SIDE, 0, SIDE-1, SIDE-2, 1)*.1);
+                        if(pixelColor.green > 0) pixelColor.green-=pixelColor.green*(map(pixIdx%SIDE, 0, SIDE-1, SIDE-2, 1)*.1);
+                        if(pixelColor.blue > 0) pixelColor.blue-=pixelColor.blue*(map(pixIdx%SIDE, 0, SIDE-1, SIDE-2, 1)*.1);
                     }
         			strip.setPixelColor(j, strip.Color(pixelColor.red, pixelColor.green, pixelColor.blue));
                     if(stop == TRUE) {return;}
@@ -1711,9 +1711,9 @@ void FFTJoy() {
                 pixelColor=getPixelColor(j);
               	//This causes a nice and smooth 'trailing' effect
               	//from the top of the cube (y-axis) towards the peak
-                if(pixelColor.red > 0) pixelColor.red-=pixelColor.red*.125;
-                if(pixelColor.green > 0) pixelColor.green-=pixelColor.green*.125;
-                if(pixelColor.blue > 0) pixelColor.blue-=pixelColor.blue*.125;
+                if(pixelColor.red > 0) pixelColor.red-=pixelColor.red*(map(pixIdx%SIDE, 0, SIDE-1, SIDE-2, 1)*.03);
+                if(pixelColor.green > 0) pixelColor.green-=pixelColor.green*(map(pixIdx%SIDE, 0, SIDE-1, SIDE-2, 1)*.03);
+                if(pixelColor.blue > 0) pixelColor.blue-=pixelColor.blue*(map(pixIdx%SIDE, 0, SIDE-1, SIDE-2, 1)*.03);
             }
             strip.setPixelColor(j, strip.Color(pixelColor.red, pixelColor.green, pixelColor.blue));
             if(stop == TRUE) {return;}
