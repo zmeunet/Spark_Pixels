@@ -1690,12 +1690,11 @@ void FFTJoy() {
                 for(int j=pixLowIdx; j<pixIdx; j++) {
                     if(smooth) {
                         pixelColor=getPixelColor(j);
-                        //This causes a nice and smooth 'trailing' effect from the base of
-                      	//the cube towards the peak; gotta fade the pixels faster, so that 
-                      	//the human eye can spot the 'trailing' effect in 'dot' mode
-                        if(pixelColor.red > 0) pixelColor.red-=pixelColor.red*(map(pixIdx%SIDE, 0, SIDE-1, SIDE-2, 1)*.1);
-                        if(pixelColor.green > 0) pixelColor.green-=pixelColor.green*(map(pixIdx%SIDE, 0, SIDE-1, SIDE-2, 1)*.1);
-                        if(pixelColor.blue > 0) pixelColor.blue-=pixelColor.blue*(map(pixIdx%SIDE, 0, SIDE-1, SIDE-2, 1)*.1);
+                        //This causes a nice and smooth 'trailing' effect
+                      	//from the base of the cube (y-axis) towards the peak
+                        if(pixelColor.red > 0) pixelColor.red-=pixelColor.red*(map(j%SIDE, 0, SIDE-1, SIDE-1, 1)*.05);
+                        if(pixelColor.green > 0) pixelColor.green-=pixelColor.green*(map(j%SIDE, 0, SIDE-1, SIDE-1, 1)*.05);
+                        if(pixelColor.blue > 0) pixelColor.blue-=pixelColor.blue*(map(j%SIDE, 0, SIDE-1, SIDE-1, 1)*.05);
                     }
         			strip.setPixelColor(j, strip.Color(pixelColor.red, pixelColor.green, pixelColor.blue));
                     if(stop == TRUE) {return;}
@@ -1711,9 +1710,9 @@ void FFTJoy() {
                 pixelColor=getPixelColor(j);
               	//This causes a nice and smooth 'trailing' effect
               	//from the top of the cube (y-axis) towards the peak
-                if(pixelColor.red > 0) pixelColor.red-=pixelColor.red*(map(pixIdx%SIDE, 0, SIDE-1, 1, SIDE-1)*.06);
-                if(pixelColor.green > 0) pixelColor.green-=pixelColor.green*(map(pixIdx%SIDE, 0, SIDE-1, 1, SIDE-1)*.06);
-                if(pixelColor.blue > 0) pixelColor.blue-=pixelColor.blue*(map(pixIdx%SIDE, 0, SIDE-1, 1, SIDE-1)*.06);
+                if(pixelColor.red > 0) pixelColor.red-=pixelColor.red*(map(j%SIDE, 0, SIDE-1, 1, SIDE-1)*.05);
+                if(pixelColor.green > 0) pixelColor.green-=pixelColor.green*(map(j%SIDE, 0, SIDE-1, 1, SIDE-1)*.05);
+                if(pixelColor.blue > 0) pixelColor.blue-=pixelColor.blue*(map(j%SIDE, 0, SIDE-1, 1, SIDE-1)*.05);
             }
             strip.setPixelColor(j, strip.Color(pixelColor.red, pixelColor.green, pixelColor.blue));
             if(stop == TRUE) {return;}
@@ -1721,17 +1720,17 @@ void FFTJoy() {
     }
     
     //Fade the 'trail' to black over the length of the cube's z-axis
-    for(int z=0;z<SIDE-1;z++)
-        for(int x=0;x<SIDE;x++)
-            for(int y=0;y<SIDE;y++) {
+    for(int x=0;x<SIDE;x++)
+        for(int y=0;y<SIDE;y++)
+            for(int z=0;z<SIDE-1;z++) {
                 int pixIdx=((z+1)*SIDE*SIDE) + (x*SIDE) + y;
                 Color trailColor=getPixelColor(pixIdx);
                 if(smooth) {
                   	//This is responsible for the 'meteors' shooting towards the back of 
                   	//the cube; otherwise it would look like they were 'going backwards'
-                    if(trailColor.red > 0) trailColor.red-=trailColor.red*.125;
-                    if(trailColor.green > 0) trailColor.green-=trailColor.green*.125;
-                    if(trailColor.blue > 0) trailColor.blue-=trailColor.blue*.125;
+                    if(trailColor.red > 0) trailColor.red-=trailColor.red*(map(z%SIDE, 0, SIDE-1, 1, SIDE-1)*.05);
+                    if(trailColor.green > 0) trailColor.green-=trailColor.green*(map(z%SIDE, 0, SIDE-1, 1, SIDE-1)*.05);
+                    if(trailColor.blue > 0) trailColor.blue-=trailColor.blue*(map(z%SIDE, 0, SIDE-1, 1, SIDE-1)*.05);
                 }
                 strip.setPixelColor((z*SIDE*SIDE) + (x*SIDE) + y, strip.Color(trailColor.red, trailColor.green, trailColor.blue));
                 if(stop == TRUE) {return;}
