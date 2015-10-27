@@ -749,7 +749,7 @@ void loop() {
         if (currentMillis - lastCommandReceived > oneHourInterval) {
             //Auto Off Criteria
             //If it's Monday through Friday between 8am and 4pm or between 10pm and 5am any day, turn Off the lights
-            if(((Time.weekday() >= 2 && Time.weekday() <=6) && (Time.hour() >= 8 && Time.hour() <= 16)) || (Time.hour() >= 22) || (Time.hour() <= 5)) {
+            if(((Time.weekday() >= 2 && Time.weekday() <=6) && (Time.hour() >= 8 && Time.hour() <= 18)) || (Time.hour() >= 23) || (Time.hour() <= 5)) {
                 //No one is home or everyone is sleeping. So shut it down
 				//sprintf(debug,"Last auto Off time = %i,", (int)(currentMillis - lastCommandReceived));
 				lastCommandReceived = currentMillis;
