@@ -143,7 +143,7 @@ bool operator== (const Point& a, const Point& b) {
 const Color black           = Color(0x00, 0x00, 0x00);
 const Color grey            = Color(0x92, 0x95, 0x91);
 const Color yellow          = Color(0xff, 0xff, 0x14);
-const Color incandescent    = Color(0xff, 0xff, 0x3c);    //This seems close to incandescent color
+const Color incandescent    = Color(0xff, 0xff, 0x9c);    //This seems closer to incandescent color
 const Color magenta         = Color(0xc2, 0x00, 0x78);
 const Color orange          = Color(0xf9, 0x73, 0x06);
 const Color teal            = Color(0x02, 0x93, 0x86);
@@ -249,7 +249,7 @@ int zone2End   = (zone2Start * 2) - 1;  //255
 int zone3Start = PIXEL_CNT / 2;         //256
 int zone3End   = zone3Start + zone1End; //383
 int zone4Start = zone3End + 1;          //384
-int zone4End   = PIXEL_CNT - 1;			//512
+int zone4End   = PIXEL_CNT - 1;			//511
 
 //CHASER mode specific Start and End Pixels, re-use some from ZONE mode
 //int ChaserZone3Section1End   = 177;
@@ -272,7 +272,7 @@ UDP Udp;    //an UDP instance to let us receive packets over UDP
 #define TPM2NET_FOOTER_IDENT    0x36
 #define TPM2NET_PACKET_TIMEOUT  0xFA    // 1/4 of a second
 #define NR_OF_PANELS            8       // 8x8x8 Cube
-#define PIXELS_PER_PANEL        (strip.numPixels() / NR_OF_PANELS)
+#define PIXELS_PER_PANEL        (PIXEL_CNT / NR_OF_PANELS)
 #define BPP                     3       // 3 bytes per pixel or 24bit (RGB)
 // Package size we expect. The footer byte is not included here!
 #define EXPECTED_PACKED_SIZE    (PIXELS_PER_PANEL * BPP + TPM2NET_HEADER_SIZE)
@@ -565,9 +565,8 @@ unsigned char fontTable[2048] =
 };
 
 /* ========================= RAINBOW BURST mode Defines ========================= */
-int idex = 0;
-int ihue = 0;
-
+int idex = 0, ihue = 0; //We define these here as they serve to flag if we need
+                        //to blank the cube every time the mode is called
 /* ============================ Required Prototypes ============================ */
 //int getTemperature(void);
 int showPixels(void);
@@ -661,9 +660,6 @@ void setup() {
 	defaultColor = strip.Color(incandescent.red, incandescent.green, incandescent.blue);
 	snowFlakeColor = getColorFromInteger(0xFFFFFF);
 	lastSync = lastCommandReceived = previousMillis = millis(); //Take a time stamp
-    
-    //Seed the random number generator.  THINGS WILL NEVER BE THE SAME AGAIN
-    srand(analogRead(MICROPHONE)); 
     
     c1 = Wheel(random(2, 256));
     c2 = Wheel(random(2, 256));
@@ -1012,7 +1008,7 @@ int showPixels(void) {
 }
 
 // Set all pixels in the strip to a solid color
-/* THIS FUNCTION HAS BEEN DEPRECATED - Use void transition(Color bgcolor, bool loop) */
+/* THIS FUNCTION HAS BEEN DEPRECATED - Use 'void transition(Color bgcolor, bool loop)' */
 int colorAll(uint32_t c, bool loop) {
     if(c > 0) {
         Color c2, c1 = getColorFromInteger(c);
@@ -2354,8 +2350,10 @@ void modeButton() {
 }
 
 void initMicrophone() {
-  pinMode(GAIN_CONTROL, OUTPUT);
-  analogWrite(GAIN_CONTROL, INPUTLEVEL);  //digitalWrite(GAIN_CONTROL, LOW);
+    pinMode(GAIN_CONTROL, OUTPUT);
+    analogWrite(GAIN_CONTROL, INPUTLEVEL);  //digitalWrite(GAIN_CONTROL, LOW);
+    //Seed the random number generator.  THINGS WILL NEVER BE THE SAME AGAIN
+    srand(analogRead(MICROPHONE)); 
 }
 
 short FFT(short int dir,int m,float *x,float *y) {
