@@ -748,7 +748,7 @@ void loop() {
         }
         if (currentMillis - lastCommandReceived > oneHourInterval) {
             //Auto Off Criteria
-            //If it's Monday through Friday between 8am and 4pm or between 10pm and 5am any day, turn Off the lights
+            //If it's Monday through Friday between 8am and 6pm or between 11pm and 5am any day, turn Off the lights
             if(((Time.weekday() >= 2 && Time.weekday() <=6) && (Time.hour() >= 8 && Time.hour() <= 18)) || (Time.hour() >= 23) || (Time.hour() <= 5)) {
                 //No one is home or everyone is sleeping. So shut it down
 				//sprintf(debug,"Last auto Off time = %i,", (int)(currentMillis - lastCommandReceived));
@@ -2263,8 +2263,13 @@ void FFTJoy() {
     
     FFT(1, M, real, imaginary);
     
+    /* In this loop we can trim our 'viewing window', in regards to
+     * what range of the audio spectrum we want to see at all times.
+     * We do that by means of slightly 'shifting' the array index in
+     * both imaginary[] and real[] arrays - the greater the index,
+     * the more our 'window' will shift towards high frequencies. */
     for(int i=0; i<pow(2,M); i++) {
-        imaginary[i]=sqrt(pow(imaginary[i],2)+pow(real[i],2));
+        imaginary[i]=sqrt(pow(imaginary[i+1],2)+pow(real[i+1],2));
         if(imaginary[i]>maxVal)
             maxVal=imaginary[i];
     }
