@@ -1,6 +1,15 @@
 /**
  ******************************************************************************
  * @extended SparkPixels.ino:
+ *		New mode: SQUARRAL (ported from original L3D demo)
+ *		New mode: PLASMA (ported from original L3D demo)
+ *		Functions: zplasma(), squarral()
+ * @added: New instruction, SYSTEM_THREAD(ENABLED) - provided by Particle as of v0.4.6
+ * @author   Werner Moecke
+ * @version  V2.1
+ * @date     28-October-2015 ~ 07-November-2015
+ *
+ * @extended SparkPixels.ino:
  *		New mode: DEMO (not available through the SparkPixels app menu)
  *		New mode: TWO COLOR CHASE (reworked POLICE LIGHTS CHASE)
  *		New mode: TWO COLOR WIPE (reworked POLICE LIGHTS WIPE)
@@ -47,7 +56,8 @@
  You should have received a copy of the GNU Lesser General Public
  License along with this program; if not, see <http://www.gnu.org/licenses/>.
  ******************************************************************************/
- 
+SYSTEM_THREAD(ENABLED);
+
 #include "neopixel/neopixel.h"
 #include <math.h>
 #define ON                      1
@@ -85,6 +95,8 @@ const int TWOCOLORCHASE               = 19;
 const int LISTENER                    = 20;
 const int ZONECHASER                  = 21;
 const int SPECTRUM                    = 22;
+const int SQUARRAL                    = 23;
+const int PLASMA                      = 24;
 
 typedef struct modeParams {
    int	modeId;
@@ -179,9 +191,11 @@ modeParams modeStruct[] =
         {  FLICKER,                     "FLICKER",              1   },
         {  FROZEN,                      "FROZEN",               0   },
         {  LISTENER,                    "LISTENER",             0   },
+        {  PLASMA,                      "PLASMA",               0   },
         {  POLICELIGHTS,                "POLICE LIGHTS",        0   },
         {  RAINBOW,                     "RAINBOW",              0   },
         {  RAINBOW_BURST,               "RAINBOW BURST",        0   },
+        {  SQUARRAL,                    "SQUARRAL",             0   },
         {  THEATERCHASE,                "THEATER CHASE",	    0   },
         {  TWOCOLORCHASE,               "TWO COLOR CHASER",     2   },
         {  TWOCOLORWIPE,                "TWO COLOR WIPE",       2   },
@@ -565,8 +579,23 @@ unsigned char fontTable[2048] =
 };
 
 /* ========================= RAINBOW BURST mode Defines ========================= */
-int idex = 0, ihue = 0; //We define these here as they serve to flag if we need
-                        //to blank the cube every time the mode is called
+int idex, ihue; //We define these here as they serve to flag if we need
+                //to blank the cube every time the mode is called
+
+/* ============================ SQUARRAL mode Defines =========================== */
+#define TRAIL_LENGTH 50
+int frame;
+int bound;
+int boundInc;
+int squarral_zInc;
+unsigned char axis;
+bool rainbowColor;
+Point position, increment, pixel;
+Point trailPoints[TRAIL_LENGTH];
+
+/* ============================= PLASMA mode Defines ============================ */
+float phase, colorStretch;
+
 /* ============================ Required Prototypes ============================ */
 //int getTemperature(void);
 int showPixels(void);
@@ -577,6 +606,8 @@ int isValidMode(String newMode);
 int getModeIndexFromName(String name);
 void initMicrophone(void);
 void background(Color col);
+void add(Point& a, Point& b);
+void resetVariables(int modeIndex);
 void setPixelColor(Point p, Color col);
 void transition(Color bgcolor, bool loop);
 void fadeInToColor(uint32_t index, Color col);
@@ -601,6 +632,8 @@ void collide(void);
 void rainbow(void);
 void runMode(void);
 void runDemo(void);
+void zPlasma(void);
+void squarral(void);
 void cycleLerp(void);
 void cycleWipe(void);
 void color_fade(void);
@@ -615,7 +648,6 @@ void police_light_strobo(void);
 void theaterChaseRainbow(void);
 void flicker(uint32_t c);
 void colorChaser(uint32_t c);
-void resetVariables(int modeIndex);
 void findRandomSnowFlakesPositions(int numFlakes);
 void twoColorWipe(uint32_t color1, uint32_t color2);
 void twoColorChaser(uint32_t color1, uint32_t color2);
@@ -748,7 +780,7 @@ void loop() {
         }
         if (currentMillis - lastCommandReceived > oneHourInterval) {
             //Auto Off Criteria
-            //If it's Monday through Friday between 8am and 6pm or between 11pm and 5am any day, turn Off the lights
+            //If it's Monday through Friday between 8am and 4pm or between 10pm and 5am any day, turn Off the lights
             if(((Time.weekday() >= 2 && Time.weekday() <=6) && (Time.hour() >= 8 && Time.hour() <= 18)) || (Time.hour() >= 23) || (Time.hour() <= 5)) {
                 //No one is home or everyone is sleeping. So shut it down
 				//sprintf(debug,"Last auto Off time = %i,", (int)(currentMillis - lastCommandReceived));
@@ -913,6 +945,12 @@ void runMode() {
      	case FLICKER:
 		    flicker(color1);
 			break;
+		case SQUARRAL:
+		    squarral();
+		    break;
+		case PLASMA:
+		    zPlasma();
+		    break;
 		case NORMAL:
 		default:
 		    transition(incandescent, false);    //colorAll(defaultColor, demo);
@@ -2178,6 +2216,20 @@ void resetVariables(int modeIndex) {
 		    break;
      	case FLICKER:
 			break;
+		case SQUARRAL:
+            frame = 0;
+            bound = 0;
+            axis = 0;
+            boundInc = 1;
+            squarral_zInc = 1;
+            position = {0,0,0};
+            increment = {1,0,0};
+bool rainbowColor;
+		    break;
+		case PLASMA:
+            phase = 0.0;
+            colorStretch = 0.23;    // Higher numbers will produce tighter color bands 
+		    break;
 		case NORMAL:
 		default:
 			break;
@@ -2483,4 +2535,210 @@ void showMarqueeChar(char a, int pos, Color col) {
                         setPixelColor(pos-bit-3*SIDE, SIDE-1-row, th, col);
                 }
             }
+}
+
+/* ============================ Squarral functions ============================ */
+void squarral() {
+    int posX, posY, posZ;
+    int incX, incY, incZ;
+    Color voxelColor;
+    run = TRUE;
+    
+    if(frame + bound + axis == 0) {
+        //We need to fade any voxels still lit
+        for(int idx = 0; idx < PIXEL_CNT; idx++)
+            if(strip.getPixelColor(idx) > 0) {
+                transition(black, TRUE);
+                return;
+            }
+    }
+    
+    add(position, increment);   //position += increment;
+    if((increment.x==1)&&(position.x==SIDE-1-bound))
+        increment={0,1,0};
+    if((increment.x==-1)&&(position.x==bound))
+        increment={0,-1,0};
+    if((increment.y==1)&&(position.y==SIDE-1-bound))
+        increment={-1,0,0};
+    if((increment.y==-1)&&(position.y==bound)) {
+        increment={1,0,0};
+        position.z+=squarral_zInc;
+        bound+=boundInc;
+        if((position.z==3)&&(squarral_zInc>0))
+          boundInc=0;
+        if((position.z==4)&&(squarral_zInc>0))
+          boundInc=-1;
+        if((position.z==3)&&(squarral_zInc<0))
+          boundInc=-1;
+        if((position.z==4)&&(squarral_zInc<0))
+          boundInc=0;
+        if((position.z==0)||(position.z==SIDE-1))
+            boundInc*=-1;
+        if((position.z==SIDE-1)||(position.z==0)) {
+            squarral_zInc*=-1;
+            if(squarral_zInc==1) {
+                axis=rand()%6;
+                if(rand()%5==0)
+                    rainbowColor=TRUE;
+                else
+                    rainbowColor=FALSE;
+            }
+        }
+    }
+    
+    posX=position.x;
+    posY=position.y;
+    posZ=position.z;
+    
+    incX=increment.x;
+    incY=increment.y;
+    incZ=increment.z;
+    
+    for(int i=TRAIL_LENGTH-1;i>0;i--) {
+        trailPoints[i].x=trailPoints[i-1].x;
+        trailPoints[i].y=trailPoints[i-1].y;
+        trailPoints[i].z=trailPoints[i-1].z;
+        if(stop) {demo = FALSE; return;}
+        if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+    }
+    trailPoints[0].x=pixel.x;
+    trailPoints[0].y=pixel.y;
+    trailPoints[0].z=pixel.z;
+    switch(axis) {
+        case(0):
+            pixel.x=position.x;
+            pixel.y=position.y;
+            pixel.z=position.z;
+            break;
+        case(1):
+            pixel.x=position.z;
+            pixel.y=position.x;
+            pixel.z=position.y;
+            break;
+        case(2):
+            pixel.x=position.y;
+            pixel.y=position.z;
+            pixel.z=position.x;
+            break;
+        case(3):
+            pixel.x=position.z;
+            pixel.y=SIDE-1-position.x;
+            pixel.z=position.y;
+            break;
+        case(4):
+            pixel.x=position.y;
+            pixel.y=position.z;
+            pixel.z=SIDE-1-position.x;
+            break;
+        case(5):
+            pixel.x=position.x;
+            pixel.y=SIDE-1-position.y;
+            pixel.z=position.z;
+            break;
+    }
+        
+    voxelColor=getColorFromInteger(colorMap(frame%1000,0,1000));
+    setPixelColor((int)pixel.x, (int)pixel.y, (int)pixel.z, voxelColor);
+    for(int i=0;i<TRAIL_LENGTH;i++) {
+        Color trailColor;
+        if(rainbowColor) {
+            trailColor=getColorFromInteger(colorMap((frame+(i*1000/TRAIL_LENGTH))%1000,0,1000));
+            //fade the trail to black over the length of the trail
+            trailColor.red=trailColor.red*(TRAIL_LENGTH-i)/TRAIL_LENGTH;
+            trailColor.green=trailColor.green*(TRAIL_LENGTH-i)/TRAIL_LENGTH;
+            trailColor.blue=trailColor.blue*(TRAIL_LENGTH-i)/TRAIL_LENGTH;
+        }
+        else {
+            trailColor.red=voxelColor.red*(TRAIL_LENGTH-i)/TRAIL_LENGTH;
+            trailColor.green=voxelColor.green*(TRAIL_LENGTH-i)/TRAIL_LENGTH;
+            trailColor.blue=voxelColor.blue*(TRAIL_LENGTH-i)/TRAIL_LENGTH;
+        }
+        if(stop) {demo = FALSE; return;}
+        if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+        setPixelColor((int)trailPoints[i].x, (int)trailPoints[i].y, (int)trailPoints[i].z, trailColor);
+    }
+    frame++;
+    if(stop) {demo = FALSE; return;}
+    if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+    showPixels();
+    delay(speed * .5);
+}
+
+void add(Point& a, Point& b) {
+    a.x+=b.x;
+    a.y+=b.y;
+    a.z+=b.z;
+}
+
+/* ============================= Plasma functions ============================= */
+    void zPlasma() {
+    float plasmaBrightness = constrain(map(brightness, 0, 255, 0, 100), 0, 100) * .01;
+    Color plasmaColor;
+    run = TRUE;
+  
+    //(largest_item - smallest_item) maps to (max-min)
+    float ratio = (.18 - .003)/((120*.003) - .003);
+    //(min + ratio*(value-smallest_item))
+    phase += .003 + ratio * ((map(speed, 1, 120, 120, 1) * .003) - .003);
+    
+    // The two points move along Lissajious curves, see: http://en.wikipedia.org/wiki/Lissajous_curve
+    // We want values that fit the LED grid: x values between 0..8, y values between 0..8, z values between 0...8
+    // The sin() function returns values in the range of -1.0..1.0, so scale these to our desired ranges.
+    // The phase value is multiplied by various constants; I chose these semi-randomly, to produce a nice motion.
+    Point p1 = { (sin(phase*1.000)+1.0) * 4, (sin(phase*1.310)+1.0) * 4.0,  (sin(phase*1.380)+1.0) * 4.0};
+    Point p2 = { (sin(phase*1.770)+1.0) * 4, (sin(phase*2.865)+1.0) * 4.0,  (sin(phase*1.410)+1.0) * 4.0};
+    Point p3 = { (sin(phase*0.250)+1.0) * 4, (sin(phase*0.750)+1.0) * 4.0,  (sin(phase*0.380)+1.0) * 4.0};
+    
+    byte row, col, dep;
+    
+    // For each row
+    for(row=0; row<SIDE; row++) {
+        float row_f = float(row); // Optimization: Keep a floating point value of the row number, instead of recasting it repeatedly.
+        
+        // For each column
+        for(col=0; col<SIDE; col++) {
+            float col_f = float(col); // Optimization.
+            
+            // For each depth
+            for(dep=0; dep<SIDE; dep++) {
+                float dep_f = float(dep); // Optimization.
+                
+                // Calculate the distance between this LED, and p1.
+                Point dist1 = { col_f - p1.x, row_f - p1.y,  dep_f - p1.z }; // The vector from p1 to this LED.
+                float distance1 = sqrt( dist1.x*dist1.x + dist1.y*dist1.y + dist1.z*dist1.z);
+                
+                // Calculate the distance between this LED, and p2.
+                Point dist2 = { col_f - p2.x, row_f - p2.y,  dep_f - p2.z}; // The vector from p2 to this LED.
+                float distance2 = sqrt( dist2.x*dist2.x + dist2.y*dist2.y + dist2.z*dist2.z);
+                
+                // Calculate the distance between this LED, and p3.
+                Point dist3 = { col_f - p3.x, row_f - p3.y,  dep_f - p3.z}; // The vector from p3 to this LED.
+                float distance3 = sqrt( dist3.x*dist3.x + dist3.y*dist3.y + dist3.z*dist3.z);
+                
+                // Warp the distance with a sin() function. As the distance value increases, the LEDs will get light,dark,light,dark,etc...
+                // You can use a cos() for slightly different shading, or experiment with other functions.
+                float color_1 = distance1; // range: 0.0...1.0
+                float color_2 = distance2;
+                float color_3 = distance3;
+                float color_4 = (sin( distance1 * distance2 * colorStretch )) + 2.0 * 0.5;
+                // Square the color_f value to weight it towards 0. The image will be darker and have higher contrast.
+                color_1 *= color_1 * color_4;
+                color_2 *= color_2 * color_4;
+                color_3 *= color_3 * color_4;
+                color_4 *= color_4;
+                // Scale the color up to 0..7 . Max brightness is 7.
+                //strip.setPixelColor(col + (8 * row), strip.Color(color_4, 0, 0) );
+                plasmaColor.red=color_1*plasmaBrightness;
+                plasmaColor.green=color_2*plasmaBrightness;
+                plasmaColor.blue=color_3*plasmaBrightness;
+                
+                if(stop) {demo = FALSE; return;}
+                if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+                setPixelColor(row,col,dep,plasmaColor);       
+            }
+        }
+    }
+    if(stop) {demo = FALSE; return;}
+    if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+    showPixels();
 }
