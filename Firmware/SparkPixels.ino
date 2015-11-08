@@ -1,6 +1,12 @@
 /**
  ******************************************************************************
  * @extended SparkPixels.ino:
+ *		Function: void publishCloudVariables()
+ * @author   Werner Moecke
+ * @version  V2.2
+ * @date     07-November-2015 ~ 08-November-2015
+ *
+ * @extended SparkPixels.ino:
  *		New mode: SQUARRAL (ported from original L3D demo)
  *		New mode: PLASMA (ported from original L3D demo)
  *		Functions: zplasma(), squarral()
@@ -607,6 +613,7 @@ int getModeIndexFromName(String name);
 void initMicrophone(void);
 void background(Color col);
 void add(Point& a, Point& b);
+void publishCloudVariables(void);
 void resetVariables(int modeIndex);
 void setPixelColor(Point p, Color col);
 void transition(Color bgcolor, bool loop);
@@ -661,16 +668,6 @@ short FFT(short int dir,int m,float *x,float *y);
  * ====================================================================== */
 
 void setup() {
-    Particle.function("SetMode", SetMode);
-    Particle.variable("wifi",          &wifi,                  INT);
-    Particle.variable("tHour",         &tHour,                 INT);
-    Particle.variable("speed",         &speedIndex,            INT);
-    Particle.variable("brightness",    &brightness,            INT);
-    //Particle.variable("temp",          &measuredTemperature,   DOUBLE);
-	Particle.variable("modeList",      modeList,              STRING);
-	Particle.variable("mode",          currentModeName,       STRING);
-    Particle.variable("debug",         debug,                 STRING);
-    
     //pinMode(TEMP_SENSOR_PIN,INPUT);
     pinMode(PIXEL_PIN, OUTPUT);
     //pinMode(FAN_PIN, OUTPUT);
@@ -700,8 +697,7 @@ void setup() {
     //colorAll(defaultColor);     //Turn on the NORMAL Mode
     //We are already connected: SYSTEM_MODE is no longer set to SEMI_AUTOMATIC
     //Particle.connect();   //Now connect to the cloud
-    Time.zone(TIME_ZONE_OFFSET);    //Set time zone
-    
+        
     //Clear the mode list variable
 	sprintf(modeList,"");
     //Assemble Spark Cloud available modes variable
@@ -710,9 +706,8 @@ void setup() {
         sprintf(cBuff,"%s,%i,",modeStruct[i].modeName, modeStruct[i].numOfColors);
 	    strcat(modeList,cBuff);
     }
-
+    
 	//getTemperature();
-    tHour = Time.hour();	//used to check for correct time zone
     
     // Start the UDP
     if(Udp.setBuffer(EXPECTED_PACKED_SIZE))
@@ -730,8 +725,27 @@ void setup() {
     attachInterrupt(SMOOTH_SW, smoothSwitch, CHANGE);
 }
 
+void publishCloudVariables() {
+    if(waitFor(Particle.connected, 5000)) {
+        Particle.function("SetMode", SetMode);
+        Particle.variable("wifi",          &wifi,                  INT);
+        Particle.variable("tHour",         &tHour,                 INT);
+        Particle.variable("speed",         &speedIndex,            INT);
+        Particle.variable("brightness",    &brightness,            INT);
+        //Particle.variable("temp",          &measuredTemperature,   DOUBLE);
+    	Particle.variable("modeList",      modeList,              STRING);
+    	Particle.variable("mode",          currentModeName,       STRING);
+        Particle.variable("debug",         debug,                 STRING);
+        
+        Time.zone(TIME_ZONE_OFFSET);    //Set time zone
+        tHour = Time.hour();	//used to check for correct time zone
+    }
+}
+
 //delay (or speed) is passed 
 void loop() {
+    publishCloudVariables();
+    
     if(run) {
 		stop = FALSE;
         if(demo) {runDemo();}
