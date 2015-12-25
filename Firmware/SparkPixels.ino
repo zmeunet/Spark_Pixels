@@ -129,9 +129,9 @@ const int WARMFADE                    = 23; //credit: Kevin Carlborg
 const int CHRISTMASTREE               = 24; //credit: Kevin's friggin' xmas tree - there, have it!
 const int CHRISTMASLIGHTS             = 25; //credit: Kevin Carlborg, Werner Moecke (L3D Cube port)
 const int CHRISTMASWREATH             = 26; //credit: Kevin Carlborg, Werner Moecke (L3D Cube port, extra colors)
-const int TEXTSCROLL                  = 27; //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
-const int TEXTSPIN                    = 28; //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
-const int TEXTMARQUEE                 = 29; //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
+const int TEXTSCROLL                  = 27; //credit: Alex Hornstein, Hans-Peter "Hape", Werner Moecke (C++ port, extra settings)
+const int TEXTSPIN                    = 28; //credit: Alex Hornstein, Hans-Peter "Hape", Werner Moecke (C++ port, extra settings)
+const int TEXTMARQUEE                 = 29; //credit: Alex Hornstein, Hans-Peter "Hape", Werner Moecke (C++ port, extra settings)
 const int WHIRLWIND                   = 30; //credit: Bill Marrs
 const int CUBES                       = 31; //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
 const int RAIN                        = 32; //credit: Kevin Carlborg, Werner Moecke (Matrix Mode)
@@ -252,9 +252,9 @@ modeParams modeStruct[] =
         {  SQUARRAL,                    "SQUARRAL",             0,          0,      FALSE   },  //credit: Alex Hornstein
         {  SPECTRUM,                    "SPECTRUM",	            0,          2,      FALSE   },  //credit: Alex Hornstein, Werner Moecke (extra settings)
         {  COLORSTRIPES,                "STRIPES",              0,          0,      FALSE   },  //credit: Werner Moecke
-        {  TEXTMARQUEE,                 "TEXT MARQUEE",	        2,          3,      TRUE    },  //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
-        {  TEXTSCROLL,                  "TEXT SCROLL",	        2,          3,      TRUE    },  //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
-        {  TEXTSPIN,                    "TEXT SPIN",            2,          3,      TRUE    },  //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
+        {  TEXTMARQUEE,                 "TEXT MARQUEE",	        2,          3,      TRUE    },  //credit: Alex Hornstein, Hans-Peter "Hape", Werner Moecke (C++ port, extra settings)
+        {  TEXTSCROLL,                  "TEXT SCROLL",	        2,          3,      TRUE    },  //credit: Alex Hornstein, Hans-Peter "Hape", Werner Moecke (C++ port, extra settings)
+        {  TEXTSPIN,                    "TEXT SPIN",            2,          3,      TRUE    },  //credit: Alex Hornstein, Hans-Peter "Hape", Werner Moecke (C++ port, extra settings)
         {  THEATERCHASE,                "THEATER CHASE",        0,          0,      FALSE   },  //credit: Kevin Carlborg
         {  COLORFADE,                   "TRANSITION",           0,          0,      FALSE   },  //credit: Werner Moecke
         {  WARMFADE,                    "WARM FADE",            0,          0,      FALSE   },  //credit: Kevin Carlborg
