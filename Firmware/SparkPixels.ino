@@ -1,6 +1,15 @@
 /**
  ******************************************************************************
  * @extended SparkPixels.ino:
+ *		New mode: CUBES (by Alex Hornstein, C++ port by Werner Moecke)
+ *		New Functions: cubes(), drawCube(), cubeInc()
+ *
+ * 		Fixed demo getting stuck at OFF mode: Re-numbered modeId constant declares
+ * @author   Kevin Carlborg, Werner Moecke
+ * @version  V2.4
+ * @date     23-December-2015 ~ 25-December-2015
+ *
+ * @extended SparkPixels.ino:
  *		New mode: CHRISTMASTREE (by Kevin Carlborg)
  *		New mode: WHIRLWIND (by Bill Marrs)
  *		New setting: Auto Shut Off enable/disable (through cloud function)
@@ -93,44 +102,47 @@ Adafruit_NeoPixel strip = Adafruit_NeoPixel(PIXEL_CNT, PIXEL_PIN, PIXEL_TYPE);
 
 /* ======================= ADD NEW MODE ID HERE. ======================= */
 // Mode ID Defines
-const int STANDBY                     = 0;
-const int NORMAL                      = 1;
-const int COLORALL                    = 2;
-const int CHASER                      = 3;
-const int ZONE                        = 4;
-const int COLORPULSE                  = 5;
-const int COLORSTRIPES                = 6;
-const int ACIDDREAM                   = 7;
-const int RAINBOW                     = 9;
-const int THEATERCHASE                = 10;
-const int FROZEN                      = 11;
-const int COLLIDE                     = 12;
-const int COLORFADE                   = 13;
-const int RAINBOW_BURST               = 14;
-const int FLICKER                     = 15;
-const int COLORBREATHE                = 16;
-const int POLICELIGHTS                = 17;
-const int TWOCOLORCHASE               = 19;
-const int LISTENER                    = 20;
-const int ZONECHASER                  = 21;
-const int SPECTRUM                    = 22;
-const int SQUARRAL                    = 23;
-const int PLASMA                      = 24;
-const int WARMFADE                    = 25;
-const int CHRISTMASTREE               = 26;
-const int CHRISTMASLIGHTS             = 27;
-const int CHRISTMASWREATH             = 28;
-const int TEXTSCROLL                  = 29;
-const int TEXTSPIN                    = 30;
-const int TEXTMARQUEE                 = 31;
-const int WHIRLWIND                   = 32; //credit: Bill Marrs
+const int STANDBY                     = 0; //credit: Kevin Carlborg
+const int NORMAL                      = 1; //credit: Kevin Carlborg
+const int COLORALL                    = 2; //credit: Kevin Carlborg
+const int CHASER                      = 3; //credit: Kevin Carlborg
+const int ZONE                        = 4; //credit: Kevin Carlborg
+const int COLORPULSE                  = 5; //credit: Werner Moecke
+const int COLORSTRIPES                = 6; //credit: Werner Moecke
+const int ACIDDREAM                   = 7; //credit: Werner Moecke
+const int RAINBOW                     = 8; //credit: Kevin Carlborg
+const int THEATERCHASE                = 9; //credit: Kevin Carlborg
+const int FROZEN                      = 10; //credit: Kevin Carlborg
+const int COLLIDE                     = 11; //credit: Kevin Carlborg
+const int COLORFADE                   = 12; //credit: Werner Moecke
+const int RAINBOW_BURST               = 13; //credit: Werner Moecke
+const int FLICKER                     = 14; //credit: Werner Moecke
+const int COLORBREATHE                = 15; //credit: Werner Moecke
+const int POLICELIGHTS                = 16; //credit: Werner Moecke
+const int TWOCOLORCHASE               = 17; //credit: Werner Moecke
+const int LISTENER                    = 18; //credit: Werner Moecke
+const int ZONECHASER                  = 19; //credit: Werner Moecke
+const int SPECTRUM                    = 20; //credit: Alex Hornstein, Werner Moecke (extra settings)
+const int SQUARRAL                    = 21; //credit: Alex Hornstein
+const int PLASMA                      = 22; //credit: Alex Hornstein, Werner Moecke (speed settings)
+const int WARMFADE                    = 23; //credit: Kevin Carlborg
+const int CHRISTMASTREE               = 24; //credit: Kevin's friggin' xmas tree - there, have it!
+const int CHRISTMASLIGHTS             = 25; //credit: Kevin Carlborg, Werner Moecke (L3D Cube port)
+const int CHRISTMASWREATH             = 26; //credit: Kevin Carlborg, Werner Moecke (L3D Cube port, extra colors)
+const int TEXTSCROLL                  = 27; //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
+const int TEXTSPIN                    = 28; //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
+const int TEXTMARQUEE                 = 29; //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
+const int WHIRLWIND                   = 30; //credit: Bill Marrs
+const int CUBES                       = 31; //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
+const int RAIN                        = 32; //credit: Kevin Carlborg, Werner Moecke (Matrix Mode)
+
 
 const int MAX_NUM_COLORS = 6;
-const int MAX_NUM_SWITCHES = 3;
+const int MAX_NUM_SWITCHES = 4;
 
 typedef struct modeParams {
    int	modeId;
-   char	modeName[64];
+   char	modeName[20];
    int	numOfColors;       //Tell the android app home many colors to expect. Max number is 6
    int  numOfSwitches;
    bool textInput;   
@@ -141,6 +153,7 @@ typedef struct switchParams {
    char switch1Title[20];
    char switch2Title[20];
    char switch3Title[20];
+   char switch4Title[20];
 } switchParams;
 
 /** An RGB color. */
@@ -215,49 +228,52 @@ modeParams modeStruct[] =
 {
     /*     modeId                       modeName                #Colors     #Switches   textInput
      *     --------------- 	            ---------------	        ---------   ---------   --------- */
-        {  STANDBY,                     "OFF",                  0,          0,      FALSE   },
-        {  NORMAL,                      "LIGHT",                0,          0,      FALSE   },
-        {  ACIDDREAM,                   "ACID DREAM",           0,          0,      FALSE   },
-        {  COLORBREATHE,                "BREATHE",              0,          0,      FALSE   },
-        {  RAINBOW_BURST,               "BURST",                0,          0,      FALSE   },
-        {  CHASER,                      "CHASER",               1,          0,      FALSE   },
-        {  COLLIDE,                     "COLLIDE",              0,          0,      FALSE   },
-        {  COLORALL,                    "COLOR ALL",            1,          0,      FALSE   },
-        {  CHRISTMASWREATH,             "COLOR WREATH",         2,          0,      FALSE   },
-        {  CHRISTMASLIGHTS,             "CHRISTMAS LIGHTS",     0,          0,      FALSE   },
-        {  CHRISTMASTREE,               "CHRISTMAS TREE",       0,          3,      FALSE   },
-        {  TWOCOLORCHASE,               "DUAL CHASE",           2,          0,      FALSE   },
-        {  FLICKER,                     "FLICKER",              1,          0,      FALSE   },
-        {  FROZEN,                      "FROZEN",               0,          0,      FALSE   },
-        {  LISTENER,                    "LISTENER",             0,          0,      FALSE   },
-        {  PLASMA,                      "PLASMA",               0,          0,      FALSE   },
-        {  POLICELIGHTS,                "POLICE",               0,          0,      FALSE   },
-        {  COLORPULSE,                  "PULSE",                0,          0,      FALSE   },
-        {  RAINBOW,                     "RAINBOW",              0,          0,      FALSE   },
-        {  SQUARRAL,                    "SQUARRAL",             0,          0,      FALSE   },
-        {  SPECTRUM,                    "SPECTRUM",	            0,          2,      FALSE   },
-        {  COLORSTRIPES,                "STRIPES",              0,          0,      FALSE   },
-        {  TEXTMARQUEE,                 "TEXT MARQUEE",	        2,          3,      TRUE    },
-        {  TEXTSCROLL,                  "TEXT SCROLL",	        2,          3,      TRUE    },
-        {  TEXTSPIN,                    "TEXT SPIN",            2,          3,      TRUE    },
-        {  THEATERCHASE,                "THEATER CHASE",        0,          0,      FALSE   },
-        {  COLORFADE,                   "TRANSITION",           0,          0,      FALSE   },
-        {  WARMFADE,                    "WARM FADE",            0,          0,      FALSE   },
+        {  STANDBY,                     "OFF",                  0,          0,      FALSE   },  //credit: Kevin Carlborg
+        {  NORMAL,                      "LIGHT",                0,          0,      FALSE   },  //credit: Kevin Carlborg
+        {  ACIDDREAM,                   "ACID DREAM",           0,          0,      FALSE   },  //credit: Werner Moecke
+        {  COLORBREATHE,                "BREATHE",              0,          0,      FALSE   },  //credit: Werner Moecke
+        {  RAINBOW_BURST,               "BURST",                0,          0,      FALSE   },  //credit: Werner Moecke
+        {  CHASER,                      "CHASER",               1,          0,      FALSE   },  //credit: Kevin Carlborg
+        {  CHRISTMASLIGHTS,             "CHRISTMAS LIGHTS",     0,          0,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (L3D Cube port)
+        {  CHRISTMASTREE,               "CHRISTMAS TREE",       0,          3,      FALSE   },  //credit: Kevin's friggin' xmas tree - there, have it!
+        {  COLLIDE,                     "COLLIDE",              0,          0,      FALSE   },  //credit: Kevin Carlborg
+        {  COLORALL,                    "COLOR ALL",            1,          0,      FALSE   },  //credit: Kevin Carlborg
+        {  CHRISTMASWREATH,             "COLOR WREATH",         2,          0,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (L3D Cube port, extra colors)
+        {  CUBES,                       "CUBES",                4,          4,      FALSE   },  //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
+        {  TWOCOLORCHASE,               "DUAL CHASE",           2,          0,      FALSE   },  //credit: Werner Moecke
+        {  FLICKER,                     "FLICKER",              1,          0,      FALSE   },  //credit: Werner Moecke
+        {  FROZEN,                      "FROZEN",               0,          0,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (flake fading)
+        {  LISTENER,                    "LISTENER",             0,          0,      FALSE   },  //credit: Werner Moecke
+        {  PLASMA,                      "PLASMA",               0,          0,      FALSE   },  //credit: Alex Hornstein, Werner Moecke (speed settings)
+        {  POLICELIGHTS,                "POLICE",               0,          0,      FALSE   },  //credit: Werner Moecke
+        {  COLORPULSE,                  "PULSE",                0,          0,      FALSE   },  //credit: Werner Moecke
+        {  RAIN,                        "RAIN",                 1,          3,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (Matrix Mode)
+        {  RAINBOW,                     "RAINBOW",              0,          0,      FALSE   },  //credit: Kevin Carlborg
+        {  SQUARRAL,                    "SQUARRAL",             0,          0,      FALSE   },  //credit: Alex Hornstein
+        {  SPECTRUM,                    "SPECTRUM",	            0,          2,      FALSE   },  //credit: Alex Hornstein, Werner Moecke (extra settings)
+        {  COLORSTRIPES,                "STRIPES",              0,          0,      FALSE   },  //credit: Werner Moecke
+        {  TEXTMARQUEE,                 "TEXT MARQUEE",	        2,          3,      TRUE    },  //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
+        {  TEXTSCROLL,                  "TEXT SCROLL",	        2,          3,      TRUE    },  //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
+        {  TEXTSPIN,                    "TEXT SPIN",            2,          3,      TRUE    },  //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
+        {  THEATERCHASE,                "THEATER CHASE",        0,          0,      FALSE   },  //credit: Kevin Carlborg
+        {  COLORFADE,                   "TRANSITION",           0,          0,      FALSE   },  //credit: Werner Moecke
+        {  WARMFADE,                    "WARM FADE",            0,          0,      FALSE   },  //credit: Kevin Carlborg
         {  WHIRLWIND,                   "WHIRLWIND",            0,          0,      FALSE   },  //credit: Bill Marrs
-        {  ZONE,                        "ZONE",				    4,          0,      FALSE   },
-        {  ZONECHASER,                  "ZONE CHASE",			4,          0,      FALSE   }
+        {  ZONE,                        "ZONE",				    4,          0,      FALSE   },  //credit: Kevin Carlborg
+        {  ZONECHASER,                  "ZONE CHASE",			4,          0,      FALSE   }   //credit: Werner Moecke
 };
 
 switchParams switchTitleStruct[] = 
 { 
-    /*     modeId           S1Title         S2Title         S3Title    
-     *     ---------------  --------------- --------------- ---------------  */
-	    {  SPECTRUM,        "Smooth",       "Peak Mode",        ""            },
-	    {  TEXTMARQUEE,     "Bold Text",    "No Background",    "Black Text"  },
-	    {  TEXTSPIN,        "Bold Text",    "No Background",    "Black Text"  },
-	    {  TEXTSCROLL,      "Bold Text",    "No Background",    "Black Text"  },
-	    {  CHRISTMASTREE,   "Make it Snow", "Pulse the Star",   "Lights On"   }
-	    
+    /*  modeId           S1Title                S2Title                S3Title                S4Title 
+     *  ---------------  ---------------------- ---------------------- ---------------------- ----------------------  */
+	   {  SPECTRUM,      "Smooth",              "Peak Mode",           "",                    ""                     },
+	   {  TEXTMARQUEE,   "Bold Text",           "No Background",       "Black Text",          ""                     },
+	   {  TEXTSPIN,      "Bold Text",           "No Background",       "Black Text",          ""                     },
+	   {  TEXTSCROLL,    "Bold Text",           "No Background",       "Black Text",          ""                     },
+	   {  CHRISTMASTREE, "Make it Snow",        "Pulse the Star",      "Lights On",           ""                     },
+	   {  CUBES,         "Fill Cubes",          "Random Colors",       "Bleed Edge Color",    "Bleed Main Color"     },
+	   {  RAIN,          "Random Colors",       "Matrix Mode",         "Fade Bottom",         ""                     }
 };
 
 //Preset speed constants
@@ -291,7 +307,7 @@ uint32_t color5;
 uint32_t color6;
 uint32_t c1, c2;
 //Variables to hold the switch settings to each mode requiring them
-bool switch1, switch2, switch3;
+bool switch1, switch2, switch3, switch4;
 int lastRand = 0;
 int lastLastRand = 0;
 
@@ -681,6 +697,11 @@ int arcs = 180;
 Point center = { 4.5, 4.5, 4.5 };
 unsigned long lastSwap;
 
+/* ============================= cubes mode Defines ============================= */
+int side, inc, mode;
+bool flipColor;
+Color cubeCol;
+
 /* ============================ Required Prototypes ============================= */
 int showPixels(void);
 int antipodal_index(int i);
@@ -690,6 +711,7 @@ int getModeIndexFromID(int id);
 int isValidMode(String newMode);
 int getModeIndexFromName(String name);
 int getSwitchTitleStructIndex(int modeId);
+void fadeToBlack(void);
 void makeModeList(void);    //Added new function to make mode and parameter lists
 void initMicrophone(void);
 void background(Color col);
@@ -699,9 +721,12 @@ void resetVariables(int modeIndex);
 void randomColor(struct Color *clr);
 void setPixelColor(Point p, Color col);
 void transition(Color bgcolor, bool loop);
+void drawLine(Point p1, Point p2, Color col);
+void mixVoxel(Point currentPoint, Color col);
 void fadeInToColor(uint32_t index, Color col);
 void random_seed_from_cloud(unsigned int seed);     //Disable random seed from the cloud 
 void fadeOutFromColor(uint32_t index, Color col);
+void drawCube(Point topLeft, int side, Color col);
 void setPixelColor(int x, int y, int z, Color col);
 void drawSolidHorizontalCircle(int xOrigin, int yOrigin, int z, int radius, Color col);
 void drawHollowHorizontalCircle(int xOrigin, int yOrigin, int z, int radius, Color col, bool rndColor);
@@ -711,8 +736,10 @@ float randomDecimal(void);
 float radius(float x, float y, float z);
 Color getPixelColor(Point p);
 Color getPixelColor(int index);
+Color complement(Color original);
 Color getColorFromInteger(uint32_t col);
 Color getPixelColor(int x, int y, int z);
+Color fadeColor(Color col, float scaleFactor);
 uint8_t fadeSqRt(float value);
 uint8_t fadeSquare(float value);
 uint8_t fadeLinear(float value);
@@ -724,6 +751,7 @@ uint32_t lerpColor(uint32_t c1, uint32_t c2, uint32_t val, uint32_t minVal, uint
 /* ======================= Spark Pixel Prototypes =============================== */
 int colorAll(uint32_t c, bool loop);    /* THIS FUNCTION HAS BEEN DEPRECATED - Use transition() */
 int colorZone(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4, bool loop);
+void cubeInc(void);
 void FFTJoy(void);
 void frozen(void);
 void listen(void);
@@ -734,7 +762,7 @@ void runDemo(void);
 void zPlasma(void);
 void squarral(void);
 void warmFade(void);
-void whirlWind(void);   //credit: Bill Marrs
+void whirlWind(void);
 void cycleLerp(void);
 void color_fade(void);
 void colorPulse(void);
@@ -748,15 +776,18 @@ void christmasLights(void);
 void pulse_oneColorAll(void);
 void police_light_strobo(void);
 void theaterChaseRainbow(void);
+void rain(uint32_t c);
 void flicker(uint32_t c);
 void colorChaser(uint32_t c);
-void findRandomSnowFlakesPositions(int numFlakes);
 void textSpin(uint32_t color1, uint32_t color2);
 void textScroll(uint32_t color1, uint32_t color2);
+void findRandomSnowFlakesPositions(int numFlakes);
 void textMarquee(uint32_t color1, uint32_t color2);
 void twoColorChaser(uint32_t color1, uint32_t color2);
 void christmasWreath(uint32_t color1, uint32_t color2);
 void cubeGreeting(int textMode, int frameCount, float pos);
+void cubes(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4);
+//void cubes(void);
 void colorZoneChaser(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4);
 short FFT(short int dir,int m,float *x,float *y);
 
@@ -779,14 +810,15 @@ void setup() {
     switch1 = FALSE;
     switch2 = FALSE;
     switch3 = FALSE;
+    switch4 = FALSE;
     autoShutOff = FALSE;    //Initialize auto shut off mode variable
 	currentModeID = getModeIndexFromID(NORMAL);
 	defaultColor = strip.Color(incandescent.red, incandescent.green, incandescent.blue);
 	snowFlakeColor = getColorFromInteger(0xFFFFFF);
 	lastSync = lastCommandReceived = previousMillis = millis(); //Take a time stamp
     
-    c1 = Wheel(random(2, 256));
-    c2 = Wheel(random(2, 256));
+    c1 = Wheel(random(random(2, 256), random(2, 256)));
+    c2 = Wheel(random(random(2, 256), random(2, 256)));
 
 	//Start up the Neopixels
 	strip.begin();
@@ -886,6 +918,12 @@ void makeModeList(void) {
     					sprintf(cParamBuff,"\"%s\"",switchTitleStruct[switchTitleStructIdx].switch3Title);
     					if(isThereEnoughRoomInModeParamList(strlen(cParamBuff)+1)) {
     					    strcat(modeParamList,cParamBuff);
+    					} else { return; }
+    				}
+    				if(modeStruct[i].numOfSwitches >= 4) {
+    					sprintf(cParamBuff,"\"%s\"",switchTitleStruct[switchTitleStructIdx].switch4Title);
+    					if(isThereEnoughRoomInModeParamList(strlen(cParamBuff)+1)) {
+                            strcat(modeParamList,cParamBuff);
     					} else { return; }
     				}
     			    if(modeStruct[i].textInput == FALSE) {
@@ -989,10 +1027,10 @@ void runDemo() {
     if(stop || !demo) {run = TRUE; demo = FALSE; return;}
 
     if(isTextDone && (millis() - lastModeSet > twoMinuteInterval)) {
-        color1 = Wheel(random(2, 256));
-        color2 = Wheel(random(2, 256));
-        color3 = Wheel(random(2, 256));
-        color4 = Wheel(random(2, 256));
+        color1 = Wheel(random(random(2, 256), random(2, 256)));
+        color2 = Wheel(random(random(2, 256), random(2, 256)));
+        color3 = Wheel(random(random(2, 256), random(2, 256)));
+        color4 = Wheel(random(random(2, 256), random(2, 256)));
         
         cycleCount++;
         if(cycleCount >= (sizeof(modeStruct) / sizeof(modeStruct[0]))-4) {
@@ -1000,19 +1038,19 @@ void runDemo() {
             cycleCount = 0;
             textMode = 0;
         }
-
-        while((currentModeID == previousModeID)                  || 
-              (currentModeID == getModeIndexFromID(NORMAL))      || 
-              (currentModeID == getModeIndexFromID(STANDBY))     || 
-              (currentModeID == getModeIndexFromID(COLORALL))    || 
-              (currentModeID == getModeIndexFromID(TEXTSPIN))    || 
-              (currentModeID == getModeIndexFromID(TEXTSCROLL))  || 
-              (currentModeID == getModeIndexFromID(TEXTMARQUEE)) || 
-              (currentModeID == getModeIndexFromID(LISTENER))) {
-            
-            int i = random((int)(sizeof(modeStruct) / sizeof(modeStruct[0])));
+        do {
+            int i = random(0, (int)(sizeof(modeStruct) / sizeof(modeStruct[0])));
             currentModeID = modeStruct[i].modeId;
-        }
+        }while((currentModeID == previousModeID)                  || 
+               (currentModeID == getModeIndexFromID(NORMAL))      || 
+               (currentModeID == getModeIndexFromID(STANDBY))     || 
+               (currentModeID == getModeIndexFromID(COLORALL))    ||
+               (currentModeID == getModeIndexFromID(TEXTSPIN))    || 
+               (currentModeID == getModeIndexFromID(TEXTSCROLL))  || 
+               (currentModeID == getModeIndexFromID(TEXTMARQUEE)) || 
+               (currentModeID == getModeIndexFromID(LISTENER)));
+        //sprintf(debug, "currentModeID: %d", currentModeID);
+        
         previousModeID = currentModeID;
         setNewMode(currentModeID);
 
@@ -1084,6 +1122,9 @@ void runMode() {
 		case ACIDDREAM:
 		    cycleLerp();
 		    break;    
+		case RAIN:
+		    rain(color1);
+		    break;
 		case RAINBOW:
 		    rainbowCycle();
 		    break;
@@ -1101,6 +1142,10 @@ void runMode() {
 		    break;
 		case COLLIDE:
 		    collide();
+		    break;
+		case CUBES:
+		    cubes(color1, color2, color3, color4);
+		    //cubes();
 		    break;
 		case POLICELIGHTS:
 		    police_light_strobo();
@@ -1164,6 +1209,7 @@ void resetVariables(int modeIndex) {
 		case COLORPULSE:
 		case COLORSTRIPES:
 		case ACIDDREAM:
+		case RAIN:
 		case RAINBOW:
 		case SPECTRUM:
 		case THEATERCHASE:
@@ -1177,16 +1223,23 @@ void resetVariables(int modeIndex) {
 		case CHRISTMASWREATH:
 		case WARMFADE:
      	case FLICKER:
-		    transition(black, true);
+		    fadeToBlack();
+		    break;
+		case CUBES:
+            side=0;
+            inc=1;
+            mode=0;
+            flipColor = TRUE;
+		    fadeToBlack();
 		    break;
 		case CHRISTMASTREE:
 		    isFirstLap = TRUE;
-		    transition(black, true);
+		    fadeToBlack();
 		    break;
 		case PLASMA:
             phase = 0.0;
             colorStretch = 0.23;    // Higher numbers will produce tighter color bands 
-		    transition(black, true);
+		    fadeToBlack();
 		    break;
 		case RAINBOW_BURST:
             idex = 0;
@@ -1196,14 +1249,14 @@ void resetVariables(int modeIndex) {
 		case TEXTSCROLL:
             sprintf(message, textInputString);
             pos = map(strlen(message), 1, 63, -(SIDE*.5), 0); 
-            transition(black, true);
+            fadeToBlack();
             if(!switch2)
                 transition(getColorFromInteger(color2), true);
 		    break;
 		case TEXTSPIN:
             sprintf(message, textInputString);
             pos = map(strlen(message), 1, 63, -SIDE, 0);
-            transition(black, true);
+            fadeToBlack();
             if(!switch2)
                 transition(getColorFromInteger(color2), true);
 		    break;
@@ -1215,7 +1268,7 @@ void resetVariables(int modeIndex) {
             squarral_zInc = 1;
             position = {0,0,0};
             increment = {1,0,0};
-		    transition(black, true);
+		    fadeToBlack();
 		    break;
 		case WHIRLWIND:
 		    lastSwap = millis();
@@ -1226,7 +1279,7 @@ void resetVariables(int modeIndex) {
                 //clr[i] = Color(rand()%16, rand()%16, rand()%16);
                 randomColor(&clr[i]);
             }
-            transition(black, true);
+            fadeToBlack();
 		    break;
         case STANDBY:
 		case NORMAL:
@@ -1311,6 +1364,23 @@ void transition(Color bgcolor, bool loop) {
         showPixels();
         delay(speed);
     }
+}
+
+///Fade all pixels to black. Or should it be called fade to off
+void fadeToBlack(void) {
+    uint16_t tryCount = 0;
+    bool didWeFindAVoxelStillOn;
+    //Fade any voxels still lit
+    do {
+        didWeFindAVoxelStillOn = FALSE;
+        for(int idx = 0; idx < PIXEL_CNT; idx++) {
+            if(strip.getPixelColor(idx) > 0) {
+                transition(black, true);
+                didWeFindAVoxelStillOn = TRUE;
+            }
+        }
+        tryCount++;
+    }while(tryCount<6 && didWeFindAVoxelStillOn);
 }
 
 /** Set the entire cube to one color.
@@ -1429,6 +1499,132 @@ void colorChaser(uint32_t c) {
     }
 }
 
+void cubes(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4) {
+//void cubes() {
+    //static int frameCount = 0;
+    run = TRUE;
+  
+    background(black);
+    Point topLeft=Point{0, 0, 0};
+    
+    if(switch2) {
+        if (flipColor) {
+            cubeCol = getColorFromInteger(Wheel(random(random(2,256),random(2,256))));
+            flipColor = FALSE;
+        }
+    }
+    
+    switch(mode) {
+        case(0):
+            topLeft=Point{0, 0, 0};
+            if(!switch2) {cubeCol=getColorFromInteger(c1);}    //Color{255, 0, 0};
+            break;
+        case(1):
+            topLeft=Point{SIDE-1-side, 0, 0};
+            if(!switch2) {cubeCol=getColorFromInteger(c2);}    //Color{255, 255, 0};
+            break;
+        case(2):
+            topLeft=Point{SIDE-1-side, SIDE-1-side, 0};
+            if(!switch2) {cubeCol=getColorFromInteger(c3);}    //Color{0, 255, 0};
+            break;
+        case(3):
+            topLeft=Point{0, SIDE-1-side, 0};
+            if(!switch2) {cubeCol=getColorFromInteger(c4);}    //Color{0, 0, 255};
+            break;
+        case(4):
+            topLeft=Point{0, 0, SIDE-1-side};
+            if(!switch2) {cubeCol=getColorFromInteger(c1);}    //Color{255, 0, 255};
+            break;
+        case(5):
+            topLeft=Point{SIDE-1-side, 0, SIDE-1-side};
+            if(!switch2) {cubeCol=getColorFromInteger(c2);}    //Color{0, 255, 255};
+            break;
+        case(6):
+            topLeft=Point{SIDE-1-side, SIDE-1-side, SIDE-1-side};
+            if(!switch2) {cubeCol=getColorFromInteger(c3);}    //Color{255, 255, 255};
+            break;
+        case(7):
+            topLeft=Point(0, SIDE-1-side, SIDE-1-side);
+            if(!switch2) {cubeCol=getColorFromInteger(c4);}    //Color{0, 180, 130};
+            break;
+        //frameCount++;
+    }
+    
+    drawCube(topLeft, side, cubeCol);
+    //if (frameCount%5==0)
+        cubeInc();
+
+    if(stop) {demo = FALSE; return;}
+    if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+    showPixels();
+    delay(speed);
+}
+
+/*========== cubes helper functions ==========*/
+void cubeInc() {
+    side+=inc;
+    if ((side==SIDE-1)||(side==0)) {
+        delay(speed+(speed*.5));
+        inc*=-1;
+    }
+    if (side==0) {
+        mode++;
+        flipColor = TRUE;
+        //frameCount = 0;
+    }
+    if (mode>7)
+        mode=0;
+}
+
+void drawCube(Point topLeft, int side, Color col) {
+    Color complementary=complement(col);
+    Point topPoints[4];
+    Point bottomPoints[4];
+    topPoints[0]=topLeft;
+    topPoints[1]=Point{topLeft.x+side, topLeft.y, topLeft.z};
+    topPoints[2]=Point{topLeft.x+side, topLeft.y+side, topLeft.z};
+    topPoints[3]=Point{topLeft.x, topLeft.y+side, topLeft.z};
+    Point bottomLeft=Point{topLeft.x, topLeft.y, topLeft.z+side};
+    bottomPoints[0]=bottomLeft;
+    bottomPoints[1]=Point{bottomLeft.x+side, bottomLeft.y, bottomLeft.z};
+    bottomPoints[2]=Point{bottomLeft.x+side, bottomLeft.y+side, bottomLeft.z};
+    bottomPoints[3]=Point{bottomLeft.x, bottomLeft.y+side, bottomLeft.z};
+    
+    //draw bounding lines
+    for (int i=0; i<4; i++) {
+        drawLine(topPoints[i], bottomPoints[i], (switch3 ? complementary : col));
+        drawLine(topPoints[i], topPoints[(i+1)%4], (switch3 ? complementary : col));
+        drawLine(bottomPoints[i], bottomPoints[(i+1)%4], (switch3 ? complementary : col));
+        if(stop) {demo = FALSE; return;}
+        if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+    }
+    
+    for (int x=topLeft.x; x<=topLeft.x+side; x++)
+        for (int y=topLeft.y; y<=topLeft.y+side; y++)
+            for (int z=topLeft.z; z<=topLeft.z+side; z++) {
+                //fill the cube?
+                if(switch1) {setPixelColor(x,y,z, col);}
+                    if((x==topLeft.x || y==topLeft.y || z==topLeft.z) || 
+                       (x==topLeft.x+side || y==topLeft.y+side || z==topLeft.z+side)) {
+                            //bleed edge color?
+                            if (switch3) {setPixelColor(x,y,z, complementary);}
+                            //bleed main color?
+                            if (switch4) {setPixelColor(x,y,z, col);}
+                       }
+            }
+
+    if(!switch4) {
+        //paint the 4 edges of the cube with a complementary color
+        for (int i=0; i<4; i++) {
+            setPixelColor(topPoints[i], complementary);
+            setPixelColor(bottomPoints[i], complementary);
+            if(stop) {demo = FALSE; return;}
+            if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+        }
+    }
+}
+/*============================================*/
+
 /** credit: Bill Marrs **/
 void whirlWind() {
     run = TRUE;
@@ -1521,14 +1717,6 @@ void randomColor(struct Color *clr) {
   lastLastRand = lastRand;
   lastRand = r;
 }
-
-float randomDecimal() {
-  return static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
-}
-
-float radius(float x, float y, float z) {
-  return sqrt(pow(center.x - x, 2) + pow(center.z - z, 2));
-}
 /*================================================*/
 
 //A colored Christmas light string that twinkles
@@ -1561,6 +1749,7 @@ void christmasLights(void) {
     }
 }
 
+/*** credit: Kevin's friggin' xmas tree - there, have it! **/
 void christmasTree(void) {
     int xOrigin = 3; 
     int yOrigin = 3;
@@ -1680,35 +1869,6 @@ void christmasTree(void) {
     delay(speed*speedfactor);
 }
 
-/*========== christmasTree helper functions ==========*/
-//Checks to see if it's any gradient of white
-bool isWhiteColor(Color col) {
-	return (col.red == col.green && col.red == col.blue && col.red > 64);
-}
-
-//Exactly what you think it does
-//credit: http://stackoverflow.com/questions/1201200/fast-algorithm-for-drawing-filled-circles
-void drawSolidHorizontalCircle(int xOrigin, int yOrigin, int z, int radius, Color col) {
-    for(int y=-radius; y<=radius; y++)
-        for(int x=-radius; x<=radius; x++)
-            if(x*x+y*y <= radius*radius)
-                setPixelColor(xOrigin+x, z, yOrigin+y, col);
-}
-
-void drawHollowHorizontalCircle(int xOrigin, int yOrigin, int z, int radius, Color col, bool rndColor=FALSE) {
-    for(int y=-radius; y<=radius; y++) {
-        for(int x=-radius; x<=radius; x++) {
-            if(x*x+y*y == radius*radius) {
-                if(rndColor)
-                    setPixelColor(xOrigin+x, z, yOrigin+y, getColorFromInteger(Wheel(random(2,256))));
-                else
-                    setPixelColor(xOrigin+x, z, yOrigin+y, col);
-            }
-        }
-    }
-}
-/*====================================================*/
-
 void christmasWreath(uint32_t color1, uint32_t color2) {
     double i;
     int j, k, l, m;
@@ -1785,6 +1945,107 @@ void christmasWreath(uint32_t color1, uint32_t color2) {
     	delay(speedFactor*speed);
     }
     brightness = currentBrightness;
+}
+
+/* Trailing Rain Drops
+ * @param c1 Selected rain drop color from the app
+ *           or use boolean switch1 to toggle random rain drop colors */
+void rain(uint32_t c) {
+    Color col;
+    int speedfactor = 3;    //increase the delay time
+    run = TRUE;
+    
+    //In case we don't have blank playing field yet, make it blank
+    if(isFirstLap) {
+        fadeToBlack();
+        isFirstLap = FALSE;
+    }
+	
+    //First lets move any drops that exist
+    //Start at the bottom and look up each y-axis column
+    for(int x=0;x<SIDE;x++) {
+        for(int z=0;z<SIDE;z++) {
+            for(int y=0;y<SIDE;y++) {
+                Color pixelColor = getPixelColor(x,y,z);
+                if(pixelColor != black) {
+                    //We found a color!
+                    int tailEndPosition=y+2;    
+                    float firstScaledFactor = switch2 ? 1 : 0.5;    //faded tail scaling
+                    float secondScaledFactor = switch2 ? 1 : 0.125;  //faded tail scaling
+                    if(!switch2) {
+                        if(y==0) {
+                            //If we are at the bottom lets diminish the tail properly by finding it's end position
+                            for(int d=0;d<SIDE;d++) {
+                                if(getPixelColor(x,d,z) == black) {
+                                    tailEndPosition = d-1;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if(tailEndPosition>=2) {
+                        setPixelColor(x,y-1,z,pixelColor);
+                        setPixelColor(x,y  ,z,fadeColor(pixelColor,firstScaledFactor));
+                        setPixelColor(x,y+1,z,fadeColor(pixelColor,secondScaledFactor)); 
+                    } else if(tailEndPosition==1) {
+                        setPixelColor(x,y  ,z,fadeColor(pixelColor,secondScaledFactor/firstScaledFactor));
+                    }
+                    setPixelColor(x,tailEndPosition,z,((switch2 || switch3) ? pixelColor : black));   //setPixelColor(x,tailEndPosition,z,black);
+                    y=tailEndPosition; //Lets look for another rain drop above this one
+                }
+            }
+        }
+    }
+    
+    if(switch2) {
+        //Then slowly fade out previously-lit pixels to black, leaving a nice "trailing" effect
+        for(int x=0;x<SIDE;x++) {
+            for(int z=0;z<SIDE;z++) {
+                for(int y=SIDE-1;y>=0;y--) {
+                    Color pixelColor = getPixelColor(x,y,z);
+                    if(pixelColor.red > 0) pixelColor.red-=pixelColor.red*.125;
+                    if(pixelColor.green > 0) pixelColor.green-=pixelColor.green*.125;
+                    if(pixelColor.blue > 0) pixelColor.blue-=pixelColor.blue*.125;
+                    setPixelColor(x,y,z, pixelColor);
+                }
+            }
+        }
+    }
+    
+    //Let's make some new drops at the top anywher from 5 to 15 at a time
+    int numRainDrops = random(5,16);
+    for(uint16_t i=0;i<numRainDrops;i++) {
+        //We don't want to start a drop unless there are two black pixels at the top of the column
+        //So let's look to see if it's possible to start the next drop
+        for(int x=0;x<SIDE;x++) {
+            for(int z=0;z<SIDE;z++) {
+                if(getPixelColor(x,SIDE-2,z)==black && getPixelColor(x,SIDE-1,z)==black) {
+                    //It's possible to make a drop in at least one spot, so let's make one
+                    Point rainDrop = {0,SIDE-1,0};
+                    do{
+                        rainDrop.x = random(0,SIDE);
+                        rainDrop.z = random(0,SIDE);
+                        //let's bail out if we need to
+                        if(stop) {demo = FALSE; run = TRUE; return;}
+                        if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+                        //Lets keep looking for a new rain drop if we found a drop or it's tail
+                        //And lets leave an extra space between 1 drop (w/ tail) and the next drop too
+                    } while(getPixelColor(rainDrop)!=black || getPixelColor(rainDrop.x,SIDE-2,rainDrop.z)!=black);
+                        
+                    //Random color drop or predetermined
+                    if(switch1) { col = getColorFromInteger(Wheel(random(random(2,256),random(2,256)))); } 
+                    else        { col = getColorFromInteger(c); }
+                    //make a rain drop
+                    setPixelColor(rainDrop,col);
+                    x=z=SIDE;
+                }
+            }
+        }
+    }
+    if(stop) {demo = FALSE; run = TRUE; return;}
+    if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+    showPixels();
+    delay(speed*speedfactor);
 }
 
 /* Inspired by Kevin's musically inclined work neighbor
@@ -2537,6 +2798,145 @@ uint32_t colorMap(float val, float minVal, float maxVal) {
         return(lerpColor(strip.Color(colors[5].red, colors[5].green, colors[5].blue), strip.Color(colors[0].red, colors[0].green, colors[0].blue), val, 5 * range / 6, range));
 }
 
+void mixVoxel(Point currentPoint, Color col) {
+  Color currentCol=getPixelColor(currentPoint);
+  Color newCol=Color{currentCol.red+col.red, currentCol.green+col.green, currentCol.blue+col.blue};
+  setPixelColor(currentPoint, newCol);
+}
+
+// @param scaleFactor is a percentage of the current color in decimal form, i.e 0.125
+Color fadeColor(Color col, float scaleFactor) {
+    col.red=col.red*scaleFactor;
+    col.green=col.green*scaleFactor;
+    col.blue=col.blue*scaleFactor;
+    return col;
+}
+
+Color complement(Color original) {
+  float R = original.red;
+  float G = original.green;
+  float B = original.blue;
+  float minRGB = min(R, min(G, B));
+  float maxRGB = max(R, max(G, B));
+  float minPlusMax = minRGB + maxRGB;
+  return Color{minPlusMax-R, minPlusMax-G, minPlusMax-B};;
+}
+
+//Exactly what you think it does
+//credit: http://stackoverflow.com/questions/1201200/fast-algorithm-for-drawing-filled-circles
+void drawSolidHorizontalCircle(int xOrigin, int yOrigin, int z, int radius, Color col) {
+    for(int y=-radius; y<=radius; y++)
+        for(int x=-radius; x<=radius; x++)
+            if(x*x+y*y <= radius*radius)
+                setPixelColor(xOrigin+x, z, yOrigin+y, col);
+}
+
+void drawHollowHorizontalCircle(int xOrigin, int yOrigin, int z, int radius, Color col, bool rndColor=FALSE) {
+    for(int y=-radius; y<=radius; y++) {
+        for(int x=-radius; x<=radius; x++) {
+            if(x*x+y*y == radius*radius) {
+                if(rndColor)
+                    setPixelColor(xOrigin+x, z, yOrigin+y, getColorFromInteger(Wheel(random(2,256))));
+                else
+                    setPixelColor(xOrigin+x, z, yOrigin+y, col);
+            }
+        }
+    }
+}
+
+// draws a line from point p1 to p2 and colors each of the points according
+// to the col parameter
+// p1 and p2 can be outside of the cube, but it will only draw the parts of
+// the line that fall
+// inside the cube
+void drawLine(Point p1, Point p2, Color col) {
+  // thanks to Anthony Thyssen for the original write of Bresenham's line
+  // algorithm in 3D
+  // http://www.ict.griffith.edu.au/anthony/info/graphics/bresenham.procs
+
+  float dx, dy, dz, l, m, n, dx2, dy2, dz2, i, x_inc, y_inc, z_inc, err_1, err_2;
+  Point currentPoint = Point{p1.x, p1.y, p1.z};
+  dx = p2.x - p1.x;
+  dy = p2.y - p1.y;
+  dz = p2.z - p1.z;
+  x_inc = (dx < 0) ? -1 : 1;
+  l = abs(dx);
+  y_inc = (dy < 0) ? -1 : 1;
+  m = abs(dy);
+  z_inc = (dz < 0) ? -1 : 1;
+  n = abs(dz);
+  dx2 = l * 2;
+  dy2 = m * 2;
+  dz2 = n * 2;
+
+  if ((l >= m) && (l >= n)) {
+    err_1 = dy2 - l;
+    err_2 = dz2 - l;
+    for (i = 0; i < l; i++) {
+      mixVoxel(currentPoint, col);
+      if (err_1 > 0) {
+        currentPoint.y += y_inc;
+        err_1 -= dx2;
+      }
+      if (err_2 > 0) {
+        currentPoint.z += z_inc;
+        err_2 -= dx2;
+      }
+      err_1 += dy2;
+      err_2 += dz2;
+      currentPoint.x += x_inc;
+    }
+  } else if ((m >= l) && (m >= n)) {
+    err_1 = dx2 - m;
+    err_2 = dz2 - m;
+    for (i = 0; i < m; i++) {
+      mixVoxel(currentPoint, col);
+      if (err_1 > 0) {
+        currentPoint.x += x_inc;
+        err_1 -= dy2;
+      }
+      if (err_2 > 0) {
+        currentPoint.z += z_inc;
+        err_2 -= dy2;
+      }
+      err_1 += dx2;
+      err_2 += dz2;
+      currentPoint.y += y_inc;
+    }
+  } else {
+    err_1 = dy2 - n;
+    err_2 = dx2 - n;
+    for (i = 0; i < n; i++) {
+      mixVoxel(currentPoint, col);
+      if (err_1 > 0) {
+        currentPoint.y += y_inc;
+        err_1 -= dz2;
+      }
+      if (err_2 > 0) {
+        currentPoint.x += x_inc;
+        err_2 -= dz2;
+      }
+      err_1 += dy2;
+      err_2 += dx2;
+      currentPoint.z += z_inc;
+    }
+  }
+  mixVoxel(currentPoint, col);
+}
+
+float randomDecimal() {
+  return static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+}
+
+float radius(float x, float y, float z) {
+  return sqrt(pow(center.x - x, 2) + pow(center.z - z, 2));
+}
+
+//Checks to see if it's any gradient of white
+bool isWhiteColor(Color col) {
+	return (col.red == col.green && col.red == col.blue && col.red > 64);
+}
+
 /** Find index of antipodal opposite LED **/
 int antipodal_index(int i) {
     int iN = i + zone2End;
@@ -2755,6 +3155,9 @@ int SetMode(String command) {
                 case '3':
                     switch3 = command.substring(beginIdx+3, idx).toInt() & 1;
                     break;
+                case '4':
+                    switch4 = command.substring(beginIdx+3, idx).toInt() & 1;
+                    break;
             }
 		}
 		beginIdx = idx + 1;
@@ -2767,7 +3170,6 @@ int SetMode(String command) {
         run = TRUE;
 	    stop = TRUE;
 	    demo = FALSE;
-	    SetASO(ASO_CMD_STATUS);
     }
     else {
 		//I guess we're updating only the speed or brightness, so let's update the Pixels
