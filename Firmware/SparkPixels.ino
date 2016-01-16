@@ -1,11 +1,20 @@
 /**
  ******************************************************************************
  * @extended SparkPixels.ino:
+ *		New mode: CHEERLIGHTS (by Alex Hornstein, Werner Moecke [stability fixes, extra effects])
+ *		New Functions: cheerlights(), fillX(), fillY(), fillZ()
+ *
+ * 		Fixed UDP listener stability issues and improved support for multiple cube streaming
+ * @author   Werner Moecke
+ * @version  V2.5
+ * @date     05-January-2016 ~ 16-January-2016
+ *
+ * @extended SparkPixels.ino:
  *		New mode: CUBES (by Alex Hornstein, C++ port by Werner Moecke)
  *		New Functions: cubes(), drawCube(), cubeInc()
  *
  * 		Fixed demo getting stuck at OFF mode: Re-numbered modeId constant declares
- * @author   Kevin Carlborg, Werner Moecke
+ * @author   Werner Moecke
  * @version  V2.4
  * @date     23-December-2015 ~ 25-December-2015
  *
@@ -16,7 +25,7 @@
  *		New Functions: christmasTree(), whirlWind(), isWhiteColor(),
  *		drawSolidHorizontalCircle(), drawHollowHorizontalCircle(),
  * 		setASO(), randomColor(), randomDecimal(), radius()
- * @author   Kevin Carlborg, Werner Moecke
+ * @author   Werner Moecke
  * @version  V2.3
  * @date     18-November-2015 ~ 21-December-2015
  *
@@ -135,7 +144,7 @@ const int TEXTMARQUEE                 = 29; //credit: Alex Hornstein, Hans-Peter
 const int WHIRLWIND                   = 30; //credit: Bill Marrs
 const int CUBES                       = 31; //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
 const int RAIN                        = 32; //credit: Kevin Carlborg, Werner Moecke (Matrix Mode)
-
+const int CHEERLIGHTS                 = 33; //credit: Alex Hornstein, Werner Moecke (stability fixes, extra effects)
 
 const int MAX_NUM_COLORS = 6;
 const int MAX_NUM_SWITCHES = 4;
@@ -207,16 +216,18 @@ bool operator== (const Point& a, const Point& b) {
 const Color black           = Color(0x00, 0x00, 0x00);
 const Color grey            = Color(0x92, 0x95, 0x91);
 const Color yellow          = Color(0xff, 0xff, 0x14);
-const Color incandescent    = Color(0xff, 0xff, 0x7c);    //This seems closer to incandescent color
-const Color magenta         = Color(0xc2, 0x00, 0x78);
-const Color orange          = Color(0xf9, 0x73, 0x06);
+const Color incandescent    = Color(0xfd, 0xf5, 0xe6);  //This seems closer to incandescent color
+const Color magenta         = Color(0xc2, 0x00, 0x78);  //#FF00FF
+const Color orange          = Color(0xf9, 0x73, 0x06);  //#FFA500
 const Color teal            = Color(0x02, 0x93, 0x86);
+const Color cyan            = Color(0x02, 0xff, 0xff);
 const Color red             = Color(0xe5, 0x00, 0x00);
 const Color brown           = Color(0x65, 0x37, 0x00);
 const Color pink            = Color(0xff, 0x81, 0xc0);
+const Color lightpink       = Color(0xff, 0xc0, 0xcb);
 const Color blue            = Color(0x03, 0x43, 0xdf);
 const Color green           = Color(0x15, 0xb0, 0x1a);
-const Color purple          = Color(0x7e, 0x1e, 0x9c);
+const Color purple          = Color(0x7e, 0x1e, 0x9c);  //#800080
 const Color white           = Color(0xff, 0xff, 0xff);
 
 /* ======================= ADD NEW MODE STRUCT HERE. ======================= */
@@ -234,6 +245,7 @@ modeParams modeStruct[] =
         {  COLORBREATHE,                "BREATHE",              0,          0,      FALSE   },  //credit: Werner Moecke
         {  RAINBOW_BURST,               "BURST",                0,          0,      FALSE   },  //credit: Werner Moecke
         {  CHASER,                      "CHASER",               1,          0,      FALSE   },  //credit: Kevin Carlborg
+        {  CHEERLIGHTS,                 "CHEERLIGHTS",          0,          0,      FALSE   },  //credit: Alex Hornstein, Werner Moecke (stability fixes, extra effects)
         {  CHRISTMASLIGHTS,             "CHRISTMAS LIGHTS",     0,          0,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (L3D Cube port)
         {  CHRISTMASTREE,               "CHRISTMAS TREE",       0,          3,      FALSE   },  //credit: Kevin's friggin' xmas tree - there, have it!
         {  COLLIDE,                     "COLLIDE",              0,          0,      FALSE   },  //credit: Kevin Carlborg
@@ -243,7 +255,7 @@ modeParams modeStruct[] =
         {  TWOCOLORCHASE,               "DUAL CHASE",           2,          0,      FALSE   },  //credit: Werner Moecke
         {  FLICKER,                     "FLICKER",              1,          0,      FALSE   },  //credit: Werner Moecke
         {  FROZEN,                      "FROZEN",               0,          0,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (flake fading)
-        {  LISTENER,                    "LISTENER",             0,          0,      FALSE   },  //credit: Werner Moecke
+        {  LISTENER,                    "LISTENER",             0,          1,      FALSE   },  //credit: Werner Moecke
         {  PLASMA,                      "PLASMA",               0,          0,      FALSE   },  //credit: Alex Hornstein, Werner Moecke (speed settings)
         {  POLICELIGHTS,                "POLICE",               0,          0,      FALSE   },  //credit: Werner Moecke
         {  COLORPULSE,                  "PULSE",                0,          0,      FALSE   },  //credit: Werner Moecke
@@ -259,7 +271,7 @@ modeParams modeStruct[] =
         {  COLORFADE,                   "TRANSITION",           0,          0,      FALSE   },  //credit: Werner Moecke
         {  WARMFADE,                    "WARM FADE",            0,          0,      FALSE   },  //credit: Kevin Carlborg
         {  WHIRLWIND,                   "WHIRLWIND",            0,          0,      FALSE   },  //credit: Bill Marrs
-        {  ZONE,                        "ZONE",				    4,          0,      FALSE   },  //credit: Kevin Carlborg
+        {  ZONE,                        "ZONE",				    4,          3,      FALSE   },  //credit: Kevin Carlborg
         {  ZONECHASER,                  "ZONE CHASE",			4,          0,      FALSE   }   //credit: Werner Moecke
 };
 
@@ -273,7 +285,9 @@ switchParams switchTitleStruct[] =
 	   {  TEXTSCROLL,    "Bold Text",           "No Background",       "Black Text",          ""                     },
 	   {  CHRISTMASTREE, "Make it Snow",        "Pulse the Star",      "Lights On",           ""                     },
 	   {  CUBES,         "Fill Cubes",          "Random Colors",       "Bleed Edge Color",    "Bleed Main Color"     },
-	   {  RAIN,          "Random Colors",       "Matrix Mode",         "Fade Bottom",         ""                     }
+	   {  RAIN,          "Random Colors",       "Matrix Mode",         "Fade Bottom",         ""                     },
+	   {  ZONE,          "Loop",                "Random Colors",       "Coordinated Colors",  ""                     },
+	   {  LISTENER,      "Unclamp Brightness",  "",                    "",                    ""                     }
 };
 
 //Preset speed constants
@@ -347,7 +361,8 @@ int randomFlakes[(int)(PIXEL_CNT*0.1)]; // holds the snowflake positions no more
 Color snowFlakeColor;
 
 /* ========================== LISTENER mode defines ========================== */
-UDP Udp;    //an UDP instance to let us receive packets over UDP
+UDP Udp;        //an UDP instance to let us receive packets over UDP
+int countdown;  // Keep a watchdog count to 100 max failed UDP buffer read attempts
 //some tpm2.net constants
 #define TPM2NET_LISTENING_PORT  65506
 #define TPM2NET_HEADER_SIZE     6
@@ -360,8 +375,8 @@ UDP Udp;    //an UDP instance to let us receive packets over UDP
 #define NR_OF_PANELS            8       // 8x8x8 Cube
 #define PIXELS_PER_PANEL        (PIXEL_CNT / NR_OF_PANELS)
 #define BPP                     3       // 3 bytes per pixel or 24bit (RGB)
-// Package size we expect. The footer byte is not included here!
-#define EXPECTED_PACKED_SIZE    (PIXELS_PER_PANEL * BPP + TPM2NET_HEADER_SIZE)
+// Package size we expect. The footer byte is included here!
+#define EXPECTED_PACKET_SIZE    (PIXELS_PER_PANEL * BPP + TPM2NET_HEADER_SIZE) + 1  // 198 Data bytes + footer byte
 
 /* ======================= AUDIO SPECTRUM mode defines ======================= */
 #define MICROPHONE              12
@@ -702,8 +717,18 @@ int side, inc, mode;
 bool flipColor;
 Color cubeCol;
 
+/* ========================= CHEERLIGHTS mode defines ======================== */
+TCPClient client;       // a TCP instance to let us query the cheerlights API over TCP
+String hostname, path;  // the URL and path to cheerlights' thingspeak directory
+String response;        // the response read from querying cheerlights' thingspeak directory
+bool connected;         // flag if we have a solid TCP connection
+int timeout;
+int requestTime, pollTime;
+#define POLLING_INTERVAL 3000   // how often the photon polls the cheerlights API
+
 /* ============================ Required Prototypes ============================= */
 int showPixels(void);
+int hexToInt(char val);
 int antipodal_index(int i);
 int SetASO(String command);
 int setNewMode(int newMode);
@@ -714,6 +739,9 @@ int getSwitchTitleStructIndex(int modeId);
 void fadeToBlack(void);
 void makeModeList(void);    //Added new function to make mode and parameter lists
 void initMicrophone(void);
+void fillX(Color col);
+void fillY(Color col);
+void fillZ(Color col);
 void background(Color col);
 void add(Point& a, Point& b);
 void publishCloudVariables(void);
@@ -767,6 +795,7 @@ void cycleLerp(void);
 void color_fade(void);
 void colorPulse(void);
 void modeButton(void);
+void cheerlights(void);
 void smoothSwitch(void);
 void colorStripes(void);
 void random_burst(void);
@@ -832,10 +861,6 @@ void setup() {
     //Assemble Spark Cloud available modes variable
     makeModeList();
 
-    // Start the UDP
-    if(Udp.setBuffer(EXPECTED_PACKED_SIZE))
-        Udp.begin(TPM2NET_LISTENING_PORT);
-    
     // Initialize audio capture
     initMicrophone();
     
@@ -987,7 +1012,13 @@ void loop() {
             Time.zone(TIME_ZONE_OFFSET);    //Set time zone
             tHour = Time.hour();            //used to check for correct time zone
         }
-        if(!varsRegistered) {publishCloudVariables();}
+        if(!varsRegistered) {
+            publishCloudVariables();
+            if(currentModeID == getModeIndexFromID(LISTENER)) {
+                Udp.stop();
+                resetVariables(LISTENER);
+            }
+        }
         
         //Put other timing stuff in here to speed up main loop
         if (currentMillis - lastSync > oneDayInterval) {
@@ -1048,6 +1079,7 @@ void runDemo() {
                (currentModeID == getModeIndexFromID(TEXTSPIN))    || 
                (currentModeID == getModeIndexFromID(TEXTSCROLL))  || 
                (currentModeID == getModeIndexFromID(TEXTMARQUEE)) || 
+               (currentModeID == getModeIndexFromID(CHEERLIGHTS)) || 
                (currentModeID == getModeIndexFromID(LISTENER)));
         //sprintf(debug, "currentModeID: %d", currentModeID);
         
@@ -1108,7 +1140,7 @@ void runMode() {
 		    colorChaser(color1);
 			break;
 		case ZONE:
-	        colorZone(color1, color2, color3, color4, demo); 
+	        colorZone(color1, color2, color3, color4, (demo || switch1)); 
 	        break;
 		case ZONECHASER:
 	        colorZoneChaser(color1, color2, color3, color4); 
@@ -1145,7 +1177,6 @@ void runMode() {
 		    break;
 		case CUBES:
 		    cubes(color1, color2, color3, color4);
-		    //cubes();
 		    break;
 		case POLICELIGHTS:
 		    police_light_strobo();
@@ -1192,6 +1223,9 @@ void runMode() {
      	case TEXTSPIN:
 		    textSpin(color1, color2);
 			break;
+     	case CHEERLIGHTS:
+		    cheerlights();
+			break;
 		case NORMAL:
 		default:
 		    transition(incandescent, false);    //colorAll(defaultColor, demo);
@@ -1201,6 +1235,76 @@ void runMode() {
 
 void resetVariables(int modeIndex) {
     switch (modeIndex) {
+		case CHEERLIGHTS:
+		    hostname = "api.thingspeak.com";
+		    path = "/channels/1417/field/2/last.txt";
+		    response = "";
+		    pollTime = millis() + POLLING_INTERVAL;
+		    timeout = 500;
+		    connected = client.connect(hostname, 80);
+		    break;
+		case LISTENER:
+		    //fadeToBlack();
+		    countdown = 0;
+            while(!Udp.setBuffer(EXPECTED_PACKET_SIZE)) { /* Start the UDP */ }
+            Udp.begin(TPM2NET_LISTENING_PORT);
+		    break;
+		case CUBES:
+            side=0;
+            inc=1;
+            mode=0;
+            flipColor = TRUE;
+		    //fadeToBlack();
+		    break;
+		case CHRISTMASTREE:
+		    isFirstLap = TRUE;
+		    //fadeToBlack();
+		    break;
+		case PLASMA:
+            phase = 0.0;
+            colorStretch = 0.23;    // Higher numbers will produce tighter color bands 
+		    //fadeToBlack();
+		    break;
+		case RAINBOW_BURST:
+            idex = 0;
+            ihue = 0;
+		    break;
+		case TEXTMARQUEE:
+		case TEXTSCROLL:
+            sprintf(message, textInputString);
+            pos = map(strlen(message), 1, 63, -(SIDE*.5), 0); 
+            //fadeToBlack();
+            if(!switch2)
+                transition(getColorFromInteger(color2), true);
+		    break;
+		case TEXTSPIN:
+            sprintf(message, textInputString);
+            pos = map(strlen(message), 1, 63, -SIDE, 0);
+            //fadeToBlack();
+            if(!switch2)
+                transition(getColorFromInteger(color2), true);
+		    break;
+		case SQUARRAL:
+            frame = 0;
+            bound = 0;
+            axis = 0;
+            boundInc = 1;
+            squarral_zInc = 1;
+            position = {0,0,0};
+            increment = {1,0,0};
+		    //fadeToBlack();
+		    break;
+		case WHIRLWIND:
+		    lastSwap = millis();
+            for (int i=0; i<MAX_DOTS; i++) {
+                y[i] = random(SIDE);
+                radi[i] = random(MIN_RADI,MAX_RADI) + randomDecimal();
+                angle[i] = randomDecimal() * 2 * PI;
+                //clr[i] = Color(rand()%16, rand()%16, rand()%16);
+                randomColor(&clr[i]);
+            }
+            //fadeToBlack();
+		    break;
      	case COLORALL:
      	case COLORBREATHE:
      	case CHASER:
@@ -1214,7 +1318,6 @@ void resetVariables(int modeIndex) {
 		case SPECTRUM:
 		case THEATERCHASE:
 		case FROZEN:
-		case LISTENER:
 		case COLLIDE:
 		case POLICELIGHTS:
 		case TWOCOLORCHASE:
@@ -1223,64 +1326,6 @@ void resetVariables(int modeIndex) {
 		case CHRISTMASWREATH:
 		case WARMFADE:
      	case FLICKER:
-		    fadeToBlack();
-		    break;
-		case CUBES:
-            side=0;
-            inc=1;
-            mode=0;
-            flipColor = TRUE;
-		    fadeToBlack();
-		    break;
-		case CHRISTMASTREE:
-		    isFirstLap = TRUE;
-		    fadeToBlack();
-		    break;
-		case PLASMA:
-            phase = 0.0;
-            colorStretch = 0.23;    // Higher numbers will produce tighter color bands 
-		    fadeToBlack();
-		    break;
-		case RAINBOW_BURST:
-            idex = 0;
-            ihue = 0;
-		    break;
-		case TEXTMARQUEE:
-		case TEXTSCROLL:
-            sprintf(message, textInputString);
-            pos = map(strlen(message), 1, 63, -(SIDE*.5), 0); 
-            fadeToBlack();
-            if(!switch2)
-                transition(getColorFromInteger(color2), true);
-		    break;
-		case TEXTSPIN:
-            sprintf(message, textInputString);
-            pos = map(strlen(message), 1, 63, -SIDE, 0);
-            fadeToBlack();
-            if(!switch2)
-                transition(getColorFromInteger(color2), true);
-		    break;
-		case SQUARRAL:
-            frame = 0;
-            bound = 0;
-            axis = 0;
-            boundInc = 1;
-            squarral_zInc = 1;
-            position = {0,0,0};
-            increment = {1,0,0};
-		    fadeToBlack();
-		    break;
-		case WHIRLWIND:
-		    lastSwap = millis();
-            for (int i=0; i<MAX_DOTS; i++) {
-                y[i] = random(SIDE);
-                radi[i] = random(MIN_RADI,MAX_RADI) + randomDecimal();
-                angle[i] = randomDecimal() * 2 * PI;
-                //clr[i] = Color(rand()%16, rand()%16, rand()%16);
-                randomColor(&clr[i]);
-            }
-            fadeToBlack();
-		    break;
         case STANDBY:
 		case NORMAL:
 		default:
@@ -1366,6 +1411,69 @@ void transition(Color bgcolor, bool loop) {
     }
 }
 
+void fillX(Color col) {
+    int whichX = random(0, 10);
+    int whichY = random(0, 10);
+    int whichZ = random(0, 10);
+    int startX = (whichX%2 == 0) ? SIDE-1 : 0;
+    int startY = (whichY%2 == 0) ? SIDE-1 : 0;
+    int startZ = (whichZ%2 == 0) ? SIDE-1 : 0;
+
+	for(int x=startX;(startX > 0 ? x>=0 : x<SIDE);(startX > 0 ? x-- : x++))
+	    for(int y=startY;(startY > 0 ? y>=0 : y<SIDE);(startY > 0 ? y-- : y++))
+			for(int z=startZ;(startZ > 0 ? z>=0 : z<SIDE);(startZ > 0 ? z-- : z++)) {
+                int index=z*SIDE*SIDE+y*SIDE+x;
+                setPixelColor(x,y,z,col);
+                if((index%2==0)||(index==(SIDE*SIDE*SIDE)-1)) {
+	                if(stop) {return;}
+                    showPixels();
+                    delay(speed);
+                }
+            }
+}
+
+void fillY(Color col) {
+    int whichX = random(0, 10);
+    int whichY = random(0, 10);
+    int whichZ = random(0, 10);
+    int startX = (whichX%2 == 0) ? SIDE-1 : 0;
+    int startY = (whichY%2 == 0) ? SIDE-1 : 0;
+    int startZ = (whichZ%2 == 0) ? SIDE-1 : 0;
+
+	for(int y=startY;(startY > 0 ? y>=0 : y<SIDE);(startY > 0 ? y-- : y++))
+	    for(int z=startZ;(startZ > 0 ? z>=0 : z<SIDE);(startZ > 0 ? z-- : z++))
+			for(int x=startX;(startX > 0 ? x>=0 : x<SIDE);(startX > 0 ? x-- : x++)) {
+                int index=z*SIDE*SIDE+y*SIDE+x;
+                setPixelColor(x,y,z,col);
+                if((index%2==0)||(index==(SIDE*SIDE*SIDE)-1)) {
+	                if(stop) {return;}
+                    showPixels();
+                    delay(speed);
+                }
+            }
+}
+
+void fillZ(Color col) {
+    int whichX = random(0, 10);
+    int whichY = random(0, 10);
+    int whichZ = random(0, 10);
+    int startX = (whichX%2 == 0) ? SIDE-1 : 0;
+    int startY = (whichY%2 == 0) ? SIDE-1 : 0;
+    int startZ = (whichZ%2 == 0) ? SIDE-1 : 0;
+
+	for(int z=startZ;(startZ > 0 ? z>=0 : z<SIDE);(startZ > 0 ? z-- : z++))
+	    for(int x=startX;(startX > 0 ? x>=0 : x<SIDE);(startX > 0 ? x-- : x++))
+			for(int y=startY;(startY > 0 ? y>=0 : y<SIDE);(startY > 0 ? y-- : y++)) {
+                int index=z*SIDE*SIDE+y*SIDE+x;
+                setPixelColor(x,y,z,col);
+                if((index%2==0)||(index==(SIDE*SIDE*SIDE)-1)) {
+	                if(stop) {return;}
+                    showPixels();
+                    delay(speed);
+                }
+            }
+}
+
 ///Fade all pixels to black. Or should it be called fade to off
 void fadeToBlack(void) {
     uint16_t tryCount = 0;
@@ -1402,6 +1510,8 @@ int showPixels(void) {
 // Set all pixels in the strip to a solid color
 /* THIS FUNCTION HAS BEEN DEPRECATED - Use 'void transition(Color bgcolor, bool loop)' */
 int colorAll(uint32_t c, bool loop) {
+    run = loop;
+    
     if(c > 0) {
         Color c2, c1 = getColorFromInteger(c);
         uint32_t maxColorPixel = getHighestValFromRGB(c1);
@@ -1412,14 +1522,12 @@ int colorAll(uint32_t c, bool loop) {
                 if(i <= c1.blue) c2.blue = i;
                 for(int j=0; j<strip.numPixels(); j++)
                     strip.setPixelColor(j, strip.Color(c2.red, c2.green, c2.blue));
-            if(stop) {demo = FALSE; return 0;}
-            if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return 0;}}
+                if(stop) {demo = FALSE; return 0;}
                 showPixels();
             }
     }
     else {
         Color c2, c1;
-
         for(int i=0; i<strip.numPixels(); i++) {
             c = strip.getPixelColor(i);
             if(c > 0) {
@@ -1429,7 +1537,6 @@ int colorAll(uint32_t c, bool loop) {
         }
         if(c > 0) {
             uint32_t maxColorPixel = getHighestValFromRGB(c1);
-
             for(int i=maxColorPixel; i>=0; i-=(maxColorPixel*.05)) {
                 if(i <= c1.red) c2.red = i;
                 if(i <= c1.green) c2.green = i;
@@ -1437,14 +1544,12 @@ int colorAll(uint32_t c, bool loop) {
                 for(int j=0; j<strip.numPixels(); j++)
                     strip.setPixelColor(j, strip.Color(c2.red, c2.green, c2.blue));
                 if(stop) {demo = FALSE; return 0;}
-                if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return 0;}}
                 showPixels();
             }
             //Ensure every pixel has been fully blanked
             for(int i=0; i<strip.numPixels(); i++)
                 strip.setPixelColor(i, 0);
             if(stop) {demo = FALSE; return 0;}
-            if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return 0;}}
             showPixels();
         }
         /*else {
@@ -2092,10 +2197,25 @@ uint8_t fadeLinear(float value) {
 
 int colorZone(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4, bool loop) {
     uint32_t maxColorPixel, increment;
-    static Color col1 = getColorFromInteger(c1);
-    static Color col2 = getColorFromInteger(c2);
-    static Color col3 = getColorFromInteger(c3);
-    static Color col4 = getColorFromInteger(c4);
+    Color col1 = (switch2 ? getColorFromInteger(Wheel(random(random(3, 256), random(3, 256)))) : getColorFromInteger(c1));
+    Color col2, col3, col4;
+    if(!switch3) {
+        col2 = (switch2 ? getColorFromInteger(Wheel(random(3, strip.Color(col1.red, col1.green, col1.blue)), 
+                random(strip.Color(col1.red, col1.green, col1.blue)+1, 256))) : getColorFromInteger(c2));
+        col3 = (switch2 ? getColorFromInteger(Wheel(random(3, strip.Color(col2.red, col2.green, col2.blue)), 
+                random(strip.Color(col2.red, col2.green, col2.blue)+1, 256))) : getColorFromInteger(c3));
+        col4 = (switch2 ? getColorFromInteger(Wheel(random(3, strip.Color(col3.red, col3.green, col3.blue)), 
+                random(strip.Color(col3.red, col3.green, col3.blue)+1, 256))) : getColorFromInteger(c4));
+    }
+    else {
+        col2 = (switch2 ? getColorFromInteger(random(random(3, strip.Color(col1.red, col1.green, col1.blue)), 
+                random(strip.Color(col1.red, col1.green, col1.blue)+1, 256))) : getColorFromInteger(c2));
+        col3 = (switch2 ? getColorFromInteger(random(random(3, strip.Color(col2.red, col2.green, col2.blue)), 
+                random(strip.Color(col2.red, col2.green, col2.blue)+1, 256))) : getColorFromInteger(c3));
+        col4 = (switch2 ? getColorFromInteger(random(random(3, strip.Color(col3.red, col3.green, col3.blue)), 
+                random(strip.Color(col3.red, col3.green, col3.blue)+1, 256))) : getColorFromInteger(c4));
+    }
+    
     static Color c;
     run = loop;
     
@@ -3003,6 +3123,12 @@ Color getColorFromInteger(uint32_t col) {
     return retVal;
 }
 
+/** Convert a given hex color value (e.g., 'FF') to integer (e.g., 255)*/
+int hexToInt(char val) {
+    int v = (val > '9')? (val &~ 0x20) - 'A' + 10: (val - '0');
+    return v;
+}
+
 /** Fade in a pixel color from 0 to the given Color
   @param index The strip index of the pixel.
   @param col The Color to fade into.*/
@@ -3104,7 +3230,7 @@ int SetMode(String command) {
 				if(currentModeID != LISTENER) isNewSpeed = TRUE;
 			}
 			//we don't update the speed when currently in LISTENER mode
-			if(currentModeID != LISTENER) {
+			if(isNewSpeed) {
     			speedIndex = receivedSpeedValue;
     			speed = speedPresets[speedIndex];
 			}
@@ -3112,11 +3238,9 @@ int SetMode(String command) {
 		else if(command.charAt(beginIdx) == 'B') {
 		    int newBrightness = command.substring(beginIdx+2, idx).toInt() * (255 * .01);	//Scale 0-100 to 0-255
 			if(brightness != newBrightness) {
-			    //we don't update the brightness when currently in LISTENER mode
-				if(currentModeID != LISTENER) isNewBrightness = TRUE;
+				isNewBrightness = TRUE;
 			}
-			//we don't update the brightness when currently in LISTENER mode
-			if(currentModeID != LISTENER) brightness = newBrightness;
+			if(isNewBrightness) brightness = newBrightness > 0 ? newBrightness : 1;
 		}
         else if(command.charAt(beginIdx) == 'C') {
             char * p;
@@ -3224,6 +3348,7 @@ int SetText(String command) {
 int setNewMode(int newModeIndex) {
     currentModeID = modeStruct[newModeIndex].modeId;
     sprintf(currentModeName,"%s", modeStruct[newModeIndex].modeName);
+    fadeToBlack();
 	resetVariables(modeStruct[newModeIndex].modeId);
 	return newModeIndex;
 }
@@ -3245,43 +3370,86 @@ int getModeIndexFromID(int id) {
 }
 
 void listen() {
+    static char data[EXPECTED_PACKET_SIZE];
     run = TRUE;
     
     // Checks for the presence of a UDP packet, and reports the buffer size
     unsigned long bytes = Udp.parsePacket();
-    if(bytes >= EXPECTED_PACKED_SIZE) {
-        // Read 198 bytes of data from the buffer
-        char data[EXPECTED_PACKED_SIZE];
-        Udp.read(data, EXPECTED_PACKED_SIZE);
-        
+    /*------------------*/
+    /*--- Size check ---*/
+    /*------------------*/
+    // Do we have sufficient data in the buffer yet?
+    if(bytes != EXPECTED_PACKET_SIZE) {
+        // Nope - let's hold for another 100 attempts
+        if(countdown < 100) 
+            countdown++;
+        else {
+            // No luck, then let's refresh the buffer
+            Udp.stop();
+            resetVariables(LISTENER);
+        }
+        return;
+    }
+    else {
+        // Read 199 bytes of data from the buffer
+        Udp.read(data, EXPECTED_PACKET_SIZE);
+
         // Ignore all other chars
         Udp.flush();
         
         /*------------------*/
         /*-- Header check --*/
         /*------------------*/
-        // Block Start Byte
-        if(data[0] == TPM2NET_HEADER_IDENT) {
-            // Block Type: Command Packet
-            if((data[1] == TPM2NET_CMD_COMMAND) || stop) {
-                strip.setBrightness(brightness);
-                if(stop) {demo = FALSE;}
-                return; // Don't care
+        // Do we have correct tpm2.net data in the buffer?
+        if(data[0] != TPM2NET_HEADER_IDENT) {   // Block Type: Block Start Byte
+            // Nope - let's hold for another 100 attempts
+            if(countdown < 100) 
+                countdown++;
+            else {
+                // No luck, then let's refresh the buffer
+                Udp.stop();
+                resetVariables(LISTENER);
             }
-
-            // Block Type: Frame Data Packet - that's what we want
-            if(data[1] == TPM2NET_CMD_DATAFRAME) {
+            return;
+        }
+        else {
+            /*------------------*/
+            /*--- Data check ---*/
+            /*------------------*/
+            // Do we have a tpm2.net dataframe in the buffer? Or has the user cancelled this mode?
+            if((data[1] != TPM2NET_CMD_DATAFRAME) || stop) { // Block Type: Frame Data Packet
+                if(stop) {  // Was this a user-requested abort?
+                    strip.setBrightness(brightness);
+                    Udp.stop();
+                    //demo = FALSE;
+                }
+                else {
+                    // Nope - let's hold for another 100 attempts
+                    if(countdown < 100) 
+                        countdown++;
+                    else {
+                        // No luck, then let's refresh the buffer
+                        Udp.stop();
+                        resetVariables(LISTENER);
+                    }
+                }
+                return;
+            }
+            else {
+                countdown = 0;
                 // Calculate frame size
                 char frameSize = data[2];
                 frameSize = (frameSize << 8) + data[3];
         
                 // Use packetNumber to calculate offset
+                /** GLEDiaTor always sends totalPackets > packetNumber and never updates packetNumber,
+                  * Jinx always sends both the same value. So there is no point in considering either.
                 char packetNumber = data[4];
-                char totalPackets = data[5];
+                char totalPackets = data[5]; **/
         
                 // Calculate offset
-                int index = packetNumber * PIXELS_PER_PANEL;
-                int voxelIdx = TPM2NET_HEADER_SIZE;
+                //int index = packetNumber * PIXELS_PER_PANEL;
+                int voxelIdx = TPM2NET_HEADER_SIZE; // We set the index pointer to the first frame byte
 
                 // Start drawing!!
                 for(int z = NR_OF_PANELS-1; z >= 0; z--) {                  // We're only dealing in 2 dimensions (width & height)
@@ -3290,20 +3458,130 @@ void listen() {
                             Color pixelColor = Color(data[voxelIdx], data[voxelIdx + 1], data[voxelIdx + 2]);  // Take 3 color bytes from buffer
                             setPixelColor(z, col, row, pixelColor);
                         }
-                        voxelIdx+=3; // Increment buffer index by 3 bytes
+                        // Do we still have room to increment?
+                        if(voxelIdx <= (frameSize+TPM2NET_HEADER_SIZE)-3)
+                            voxelIdx+=3;  // Increment buffer index by 3 bytes
+                        else {
+                            // No - bail out, refresh buffer
+                            Udp.stop();
+                            resetVariables(LISTENER);
+                            return;
+                        }
                     }
                 }
                 // Display!!
-                if(packetNumber == totalPackets) {
-                    if(stop) {demo = FALSE; strip.setBrightness(brightness); return;}
-                    if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {strip.setBrightness(brightness); return;}}
-                    strip.setBrightness(255);
+                /** GLEDiaTor always sends totalPackets > packetNumber and never updates packetNumber,
+                  * Jinx always sends both the same value. So there is no point in considering either.
+                if(packetNumber == totalPackets) { **/
+                    if(stop) { 
+                        //demo = FALSE;
+                        strip.setBrightness(brightness);
+                        Udp.stop(); 
+                        return;
+                    }
+                    //if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {strip.setBrightness(brightness); return;}}
+                    if(switch1)
+                        strip.setBrightness(255);
+                    else
+                        strip.setBrightness(brightness);
                     strip.show();
                     Particle.process();    //process Spark events
-                }
+                //}
             }
         }
     }
+}
+
+void cheerlights(void) {
+    int red, green, blue;
+    bool headers;
+    char lastChar;
+    static Color lastCol = black;
+    run = TRUE;
+    
+    if((millis()-pollTime)>POLLING_INTERVAL) {
+        if(connected) {
+            pollTime=millis();
+            client.print("GET ");
+            client.print(path);
+            client.println(" HTTP/1.0");
+            client.print("Host: ");
+            client.println(hostname);
+            client.println("Content-Length: 0");
+            client.println();
+            sprintf(debug, "connected");
+        }
+        else {
+            sprintf(debug, "not connected");
+            client.stop();
+            resetVariables(CHEERLIGHTS);
+        }
+    
+        requestTime=millis();
+        while((client.available()==0)&&((millis()-requestTime)<timeout)) {
+            if(stop) {run = TRUE; client.stop(); return;}
+        };
+        
+        headers=TRUE;
+        lastChar='\n';
+        response="";
+    	while(client.available()>0) {
+    		char thisChar=client.read();
+    		if(!headers)
+    		    response.concat(String(thisChar));
+    		else {
+    			if((thisChar=='\r')&&(lastChar=='\n')) {
+        			headers=FALSE;
+        			client.read();  //kill that last \n
+    			}
+    			lastChar=thisChar;  
+    		}
+            if(stop) {run = TRUE; client.stop(); return;}
+            itoa(client.available(), debug, 10);
+    	}
+
+        //if there's a valid hex color string from Cheerlights, update the color
+        if(response.length()==7) {
+            //convert the hex values from the response.body string into byte values
+    		red=hexToInt(response.charAt(1))*16+hexToInt(response.charAt(2));
+    		green=hexToInt(response.charAt(3))*16+hexToInt(response.charAt(4));
+    		blue=hexToInt(response.charAt(5))*16+hexToInt(response.charAt(6));
+        	Color col=Color(red, green, blue);
+        	
+        	//actually update the color on the cube, with a cute animation
+    	    int which = random(0, 5);
+    	    if(col != lastCol) {
+            	lastCol = col;
+	            int c = strip.Color(col.red, col.green, col.blue);
+        	    switch(which) {
+        	        case 0:
+        	            transition(col, run);
+        	            break;
+        	        case 1:
+        	            colorZone(c, c, c, c, run);
+        	            break;
+        	        case 2:
+        	            fillX(col);
+        	            break;
+        	        case 3:
+        	            fillY(col);
+        	            break;
+        	        case 4:
+        	            fillZ(col);
+        	            break;
+        	    }
+    	    }
+            sprintf(debug, response);
+            if(stop) {run = TRUE; client.stop(); return;}
+        }
+        else {
+            sprintf(debug, "no reply from host");
+            client.stop();
+            resetVariables(CHEERLIGHTS);
+        }
+    }
+    //In order to allow changing the brightness at any moment
+    showPixels();
 }
 
 /* ======================= AUDIO SPECTRUM mode functions ====================== */
