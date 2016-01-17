@@ -1,6 +1,15 @@
 /**
  ******************************************************************************
  * @extended SparkPixels.ino:
+ *		New mode: FILLER (by Werner Moecke [based on idea by Alex Hornstein])
+ *		New Functions: filler()
+ *
+ * 		Fixed CHEERLIGHTS mode not initializing after changing modes
+ * @author   Werner Moecke
+ * @version  V2.6
+ * @date     16-January-2016 ~ 17-January-2016
+ *
+ * @extended SparkPixels.ino:
  *		New mode: CHEERLIGHTS (by Alex Hornstein, Werner Moecke [stability fixes, extra effects])
  *		New Functions: cheerlights(), fillX(), fillY(), fillZ()
  *
@@ -145,6 +154,7 @@ const int WHIRLWIND                   = 30; //credit: Bill Marrs
 const int CUBES                       = 31; //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
 const int RAIN                        = 32; //credit: Kevin Carlborg, Werner Moecke (Matrix Mode)
 const int CHEERLIGHTS                 = 33; //credit: Alex Hornstein, Werner Moecke (stability fixes, extra effects)
+const int FILLER                      = 34; //credit: Werner Moecke (based on idea by Alex Hornstein)
 
 const int MAX_NUM_COLORS = 6;
 const int MAX_NUM_SWITCHES = 4;
@@ -253,6 +263,7 @@ modeParams modeStruct[] =
         {  CHRISTMASWREATH,             "COLOR WREATH",         2,          0,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (L3D Cube port, extra colors)
         {  CUBES,                       "CUBES",                4,          4,      FALSE   },  //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
         {  TWOCOLORCHASE,               "DUAL CHASE",           2,          0,      FALSE   },  //credit: Werner Moecke
+        {  FILLER,                      "FILLER",               3,          1,      FALSE   },  //credit: Werner Moecke (based on idea by Alex Hornstein)
         {  FLICKER,                     "FLICKER",              1,          0,      FALSE   },  //credit: Werner Moecke
         {  FROZEN,                      "FROZEN",               0,          0,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (flake fading)
         {  LISTENER,                    "LISTENER",             0,          1,      FALSE   },  //credit: Werner Moecke
@@ -287,7 +298,8 @@ switchParams switchTitleStruct[] =
 	   {  CUBES,         "Fill Cubes",          "Random Colors",       "Bleed Edge Color",    "Bleed Main Color"     },
 	   {  RAIN,          "Random Colors",       "Matrix Mode",         "Fade Bottom",         ""                     },
 	   {  ZONE,          "Loop",                "Random Colors",       "Coordinated Colors",  ""                     },
-	   {  LISTENER,      "Unclamp Brightness",  "",                    "",                    ""                     }
+	   {  LISTENER,      "Unclamp Brightness",  "",                    "",                    ""                     },
+	   {  FILLER,        "Random Colors",       "",                    "",                    ""                     }
 };
 
 //Preset speed constants
@@ -721,6 +733,7 @@ Color cubeCol;
 TCPClient client;       // a TCP instance to let us query the cheerlights API over TCP
 String hostname, path;  // the URL and path to cheerlights' thingspeak directory
 String response;        // the response read from querying cheerlights' thingspeak directory
+Color lastCol;
 bool connected;         // flag if we have a solid TCP connection
 int timeout;
 int requestTime, pollTime;
@@ -811,6 +824,7 @@ void colorChaser(uint32_t c);
 void textSpin(uint32_t color1, uint32_t color2);
 void textScroll(uint32_t color1, uint32_t color2);
 void findRandomSnowFlakesPositions(int numFlakes);
+void filler(uint32_t c1, uint32_t c2, uint32_t c3);
 void textMarquee(uint32_t color1, uint32_t color2);
 void twoColorChaser(uint32_t color1, uint32_t color2);
 void christmasWreath(uint32_t color1, uint32_t color2);
@@ -1145,6 +1159,9 @@ void runMode() {
 		case ZONECHASER:
 	        colorZoneChaser(color1, color2, color3, color4); 
 	        break;
+		case FILLER:
+	        filler(color1, color2, color3); 
+	        break;
 		case COLORPULSE:
 		    colorPulse();
 		    break;
@@ -1241,6 +1258,7 @@ void resetVariables(int modeIndex) {
 		    response = "";
 		    pollTime = millis() + POLLING_INTERVAL;
 		    timeout = 500;
+		    lastCol = black;
 		    connected = client.connect(hostname, 80);
 		    break;
 		case LISTENER:
@@ -1326,6 +1344,7 @@ void resetVariables(int modeIndex) {
 		case CHRISTMASWREATH:
 		case WARMFADE:
      	case FLICKER:
+        case FILLER:
         case STANDBY:
 		case NORMAL:
 		default:
@@ -3492,11 +3511,51 @@ void listen() {
     }
 }
 
+void filler(uint32_t c1, uint32_t c2, uint32_t c3) {
+    static uint32_t whichColor = -1, whichFill;
+    Color col;
+    run = TRUE;
+
+    if(switch1) {
+        whichColor = Wheel(random(random(3, 255), random(3, 255)));
+        col = getColorFromInteger(whichColor);
+    }
+    else {
+        if(whichColor >= 2) {whichColor = 0;} else {whichColor++;}
+	    switch(whichColor) {
+	        case 0:
+	            col = getColorFromInteger(c1);
+	            break;
+	        case 1:
+	            col = getColorFromInteger(c2);
+	            break;
+	        case 2:
+	            col = getColorFromInteger(c3);
+	            break;
+	    }
+    }
+    
+    whichFill = random(0, 3);
+    switch(whichFill) {
+        case 0:
+            fillX(col);
+            break;
+        case 1:
+            fillY(col);
+            break;
+        case 2:
+            fillZ(col);
+            break;
+    }
+    if(stop) {demo = FALSE; return;}
+    if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+    delay(speed);
+}
+
 void cheerlights(void) {
     int red, green, blue;
     bool headers;
     char lastChar;
-    static Color lastCol = black;
     run = TRUE;
     
     if((millis()-pollTime)>POLLING_INTERVAL) {
@@ -3514,7 +3573,9 @@ void cheerlights(void) {
         else {
             sprintf(debug, "not connected");
             client.stop();
-            resetVariables(CHEERLIGHTS);
+            //resetVariables(CHEERLIGHTS);
+		    response = "";
+		    connected = client.connect(hostname, 80);
         }
     
         requestTime=millis();
@@ -3549,10 +3610,10 @@ void cheerlights(void) {
         	Color col=Color(red, green, blue);
         	
         	//actually update the color on the cube, with a cute animation
-    	    int which = random(0, 5);
     	    if(col != lastCol) {
             	lastCol = col;
 	            int c = strip.Color(col.red, col.green, col.blue);
+        	    int which = random(0, 5);
         	    switch(which) {
         	        case 0:
         	            transition(col, run);
@@ -3577,9 +3638,12 @@ void cheerlights(void) {
         else {
             sprintf(debug, "no reply from host");
             client.stop();
-            resetVariables(CHEERLIGHTS);
+            //resetVariables(CHEERLIGHTS);
+		    response = "";
+		    connected = client.connect(hostname, 80);
         }
     }
+    if(stop) {run = TRUE; client.stop(); return;}
     //In order to allow changing the brightness at any moment
     showPixels();
 }
