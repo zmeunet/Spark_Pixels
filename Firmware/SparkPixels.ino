@@ -1,6 +1,12 @@
 /**
  ******************************************************************************
  * @extended SparkPixels.ino:
+ * 		Added check for repeat color in FILLER mode
+ * @author   Werner Moecke
+ * @version  V2.7
+ * @date     16-January-2016 ~ 17-January-2016
+ *
+ * @extended SparkPixels.ino:
  *		New mode: FILLER (by Werner Moecke [based on idea by Alex Hornstein])
  *		New Functions: filler()
  *
@@ -1252,6 +1258,9 @@ void runMode() {
 
 void resetVariables(int modeIndex) {
     switch (modeIndex) {
+        case FILLER:
+		    lastCol = black;
+		    break;
 		case CHEERLIGHTS:
 		    hostname = "api.thingspeak.com";
 		    path = "/channels/1417/field/2/last.txt";
@@ -1344,7 +1353,6 @@ void resetVariables(int modeIndex) {
 		case CHRISTMASWREATH:
 		case WARMFADE:
      	case FLICKER:
-        case FILLER:
         case STANDBY:
 		case NORMAL:
 		default:
@@ -3517,7 +3525,7 @@ void filler(uint32_t c1, uint32_t c2, uint32_t c3) {
     run = TRUE;
 
     if(switch1) {
-        whichColor = Wheel(random(random(3, 255), random(3, 255)));
+        whichColor = Wheel(random(random(3, 256), random(3, 256)));
         col = getColorFromInteger(whichColor);
     }
     else {
@@ -3535,17 +3543,20 @@ void filler(uint32_t c1, uint32_t c2, uint32_t c3) {
 	    }
     }
     
-    whichFill = random(0, 3);
-    switch(whichFill) {
-        case 0:
-            fillX(col);
-            break;
-        case 1:
-            fillY(col);
-            break;
-        case 2:
-            fillZ(col);
-            break;
+    if(col != lastCol) {
+    	lastCol = col;
+        whichFill = random(0, 3);
+        switch(whichFill) {
+            case 0:
+                fillX(col);
+                break;
+            case 1:
+                fillY(col);
+                break;
+            case 2:
+                fillZ(col);
+                break;
+        }
     }
     if(stop) {demo = FALSE; return;}
     if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
