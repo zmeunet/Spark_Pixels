@@ -1,12 +1,6 @@
 /**
  ******************************************************************************
  * @extended SparkPixels.ino:
- * 		Added check for repeat color in FILLER mode
- * @author   Werner Moecke
- * @version  V2.7
- * @date     16-January-2016 ~ 17-January-2016
- *
- * @extended SparkPixels.ino:
  *		New mode: FILLER (by Werner Moecke [based on idea by Alex Hornstein])
  *		New Functions: filler()
  *
@@ -159,7 +153,7 @@ const int TEXTMARQUEE                 = 29; //credit: Alex Hornstein, Hans-Peter
 const int WHIRLWIND                   = 30; //credit: Bill Marrs
 const int CUBES                       = 31; //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
 const int RAIN                        = 32; //credit: Kevin Carlborg, Werner Moecke (Matrix Mode)
-const int CHEERLIGHTS                 = 33; //credit: Alex Hornstein, Werner Moecke (stability fixes, extra effects)
+const int CHEERLIGHTS                 = 33; //credit: Alex Hornstein, Werner Moecke (stability fixes, extra transition effects)
 const int FILLER                      = 34; //credit: Werner Moecke (based on idea by Alex Hornstein)
 
 const int MAX_NUM_COLORS = 6;
@@ -261,7 +255,7 @@ modeParams modeStruct[] =
         {  COLORBREATHE,                "BREATHE",              0,          0,      FALSE   },  //credit: Werner Moecke
         {  RAINBOW_BURST,               "BURST",                0,          0,      FALSE   },  //credit: Werner Moecke
         {  CHASER,                      "CHASER",               1,          0,      FALSE   },  //credit: Kevin Carlborg
-        {  CHEERLIGHTS,                 "CHEERLIGHTS",          0,          0,      FALSE   },  //credit: Alex Hornstein, Werner Moecke (stability fixes, extra effects)
+  		{  CHEERLIGHTS,                 "CHEERLIGHTS",          0,          0,      FALSE   },  //credit: Alex Hornstein, Werner Moecke (stability fixes, extra transition effects)
         {  CHRISTMASLIGHTS,             "CHRISTMAS LIGHTS",     0,          0,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (L3D Cube port)
         {  CHRISTMASTREE,               "CHRISTMAS TREE",       0,          3,      FALSE   },  //credit: Kevin's friggin' xmas tree - there, have it!
         {  COLLIDE,                     "COLLIDE",              0,          0,      FALSE   },  //credit: Kevin Carlborg
@@ -272,7 +266,7 @@ modeParams modeStruct[] =
         {  FILLER,                      "FILLER",               3,          1,      FALSE   },  //credit: Werner Moecke (based on idea by Alex Hornstein)
         {  FLICKER,                     "FLICKER",              1,          0,      FALSE   },  //credit: Werner Moecke
         {  FROZEN,                      "FROZEN",               0,          0,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (flake fading)
-        {  LISTENER,                    "LISTENER",             0,          1,      FALSE   },  //credit: Werner Moecke
+        {  LISTENER,                    "LISTENER",             0,          0,      FALSE   },  //credit: Werner Moecke
         {  PLASMA,                      "PLASMA",               0,          0,      FALSE   },  //credit: Alex Hornstein, Werner Moecke (speed settings)
         {  POLICELIGHTS,                "POLICE",               0,          0,      FALSE   },  //credit: Werner Moecke
         {  COLORPULSE,                  "PULSE",                0,          0,      FALSE   },  //credit: Werner Moecke
@@ -303,9 +297,8 @@ switchParams switchTitleStruct[] =
 	   {  CHRISTMASTREE, "Make it Snow",        "Pulse the Star",      "Lights On",           ""                     },
 	   {  CUBES,         "Fill Cubes",          "Random Colors",       "Bleed Edge Color",    "Bleed Main Color"     },
 	   {  RAIN,          "Random Colors",       "Matrix Mode",         "Fade Bottom",         ""                     },
+	   {  FILLER,        "Random Colors",       "",                    "",                    ""                     },
 	   {  ZONE,          "Loop",                "Random Colors",       "Coordinated Colors",  ""                     },
-	   {  LISTENER,      "Unclamp Brightness",  "",                    "",                    ""                     },
-	   {  FILLER,        "Random Colors",       "",                    "",                    ""                     }
 };
 
 //Preset speed constants
@@ -342,6 +335,7 @@ uint32_t c1, c2;
 bool switch1, switch2, switch3, switch4;
 int lastRand = 0;
 int lastLastRand = 0;
+Color lastCol;
 
 //Particle Cloud Variables
 int wifi = 0;           //used for general info and setup
@@ -358,7 +352,7 @@ bool varsRegistered = FALSE;        //Flags if we have all of our cloud variable
  *Configure the Auto Shut Off times in the loop() function */
 bool autoShutOff;
 
-/* ======================= mode Specific Defines ======================= */
+/* ======================= Mode-specific Defines ======================= */
 //ZONE mode Start and End Pixels
 int zone1Start = 0;
 int zone1End   = (PIXEL_CNT / 4) - 1;   //127
@@ -730,20 +724,19 @@ int arcs = 180;
 Point center = { 4.5, 4.5, 4.5 };
 unsigned long lastSwap;
 
-/* ============================= cubes mode Defines ============================= */
+/* ============================= Cubes mode Defines ============================= */
 int side, inc, mode;
 bool flipColor;
 Color cubeCol;
 
-/* ========================= CHEERLIGHTS mode defines ======================== */
+/* ========================= Cheerlights mode defines ======================== */
+#define POLLING_INTERVAL 3000   // how often the photon polls the cheerlights API
+#define RESPONSE_TIMEOUT 500	// the timeout (in ms) to wait for a response from the cheerlights API
 TCPClient client;       // a TCP instance to let us query the cheerlights API over TCP
 String hostname, path;  // the URL and path to cheerlights' thingspeak directory
 String response;        // the response read from querying cheerlights' thingspeak directory
-Color lastCol;
 bool connected;         // flag if we have a solid TCP connection
-int timeout;
 int requestTime, pollTime;
-#define POLLING_INTERVAL 3000   // how often the photon polls the cheerlights API
 
 /* ============================ Required Prototypes ============================= */
 int showPixels(void);
@@ -836,7 +829,6 @@ void twoColorChaser(uint32_t color1, uint32_t color2);
 void christmasWreath(uint32_t color1, uint32_t color2);
 void cubeGreeting(int textMode, int frameCount, float pos);
 void cubes(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4);
-//void cubes(void);
 void colorZoneChaser(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4);
 short FFT(short int dir,int m,float *x,float *y);
 
@@ -1032,13 +1024,7 @@ void loop() {
             Time.zone(TIME_ZONE_OFFSET);    //Set time zone
             tHour = Time.hour();            //used to check for correct time zone
         }
-        if(!varsRegistered) {
-            publishCloudVariables();
-            if(currentModeID == getModeIndexFromID(LISTENER)) {
-                Udp.stop();
-                resetVariables(LISTENER);
-            }
-        }
+        if(!varsRegistered) {publishCloudVariables();}
         
         //Put other timing stuff in here to speed up main loop
         if (currentMillis - lastSync > oneDayInterval) {
@@ -1165,9 +1151,6 @@ void runMode() {
 		case ZONECHASER:
 	        colorZoneChaser(color1, color2, color3, color4); 
 	        break;
-		case FILLER:
-	        filler(color1, color2, color3); 
-	        break;
 		case COLORPULSE:
 		    colorPulse();
 		    break;
@@ -1201,12 +1184,18 @@ void runMode() {
 		case CUBES:
 		    cubes(color1, color2, color3, color4);
 		    break;
+		case FILLER:
+	        filler(color1, color2, color3); 
+	        break;
 		case POLICELIGHTS:
 		    police_light_strobo();
 		    break;
 		case TWOCOLORCHASE:
 		    twoColorChaser(color1, color2);
 		    break;
+     	case CHEERLIGHTS:
+		    cheerlights();
+			break;
 		case CHRISTMASWREATH:
 		    christmasWreath(color1, color2);
 		    break;
@@ -1246,9 +1235,6 @@ void runMode() {
      	case TEXTSPIN:
 		    textSpin(color1, color2);
 			break;
-     	case CHEERLIGHTS:
-		    cheerlights();
-			break;
 		case NORMAL:
 		default:
 		    transition(incandescent, false);    //colorAll(defaultColor, demo);
@@ -1258,21 +1244,21 @@ void runMode() {
 
 void resetVariables(int modeIndex) {
     switch (modeIndex) {
-        case FILLER:
-		    lastCol = black;
-		    break;
 		case CHEERLIGHTS:
 		    hostname = "api.thingspeak.com";
 		    path = "/channels/1417/field/2/last.txt";
 		    response = "";
 		    pollTime = millis() + POLLING_INTERVAL;
-		    timeout = 500;
 		    lastCol = black;
+        	client.stop();
 		    connected = client.connect(hostname, 80);
 		    break;
+        case FILLER:
+		    lastCol = black;
+		    break;
 		case LISTENER:
-		    //fadeToBlack();
 		    countdown = 0;
+        	Udp.stop();
             while(!Udp.setBuffer(EXPECTED_PACKET_SIZE)) { /* Start the UDP */ }
             Udp.begin(TPM2NET_LISTENING_PORT);
 		    break;
@@ -1438,69 +1424,6 @@ void transition(Color bgcolor, bool loop) {
     }
 }
 
-void fillX(Color col) {
-    int whichX = random(0, 10);
-    int whichY = random(0, 10);
-    int whichZ = random(0, 10);
-    int startX = (whichX%2 == 0) ? SIDE-1 : 0;
-    int startY = (whichY%2 == 0) ? SIDE-1 : 0;
-    int startZ = (whichZ%2 == 0) ? SIDE-1 : 0;
-
-	for(int x=startX;(startX > 0 ? x>=0 : x<SIDE);(startX > 0 ? x-- : x++))
-	    for(int y=startY;(startY > 0 ? y>=0 : y<SIDE);(startY > 0 ? y-- : y++))
-			for(int z=startZ;(startZ > 0 ? z>=0 : z<SIDE);(startZ > 0 ? z-- : z++)) {
-                int index=z*SIDE*SIDE+y*SIDE+x;
-                setPixelColor(x,y,z,col);
-                if((index%2==0)||(index==(SIDE*SIDE*SIDE)-1)) {
-	                if(stop) {return;}
-                    showPixels();
-                    delay(speed);
-                }
-            }
-}
-
-void fillY(Color col) {
-    int whichX = random(0, 10);
-    int whichY = random(0, 10);
-    int whichZ = random(0, 10);
-    int startX = (whichX%2 == 0) ? SIDE-1 : 0;
-    int startY = (whichY%2 == 0) ? SIDE-1 : 0;
-    int startZ = (whichZ%2 == 0) ? SIDE-1 : 0;
-
-	for(int y=startY;(startY > 0 ? y>=0 : y<SIDE);(startY > 0 ? y-- : y++))
-	    for(int z=startZ;(startZ > 0 ? z>=0 : z<SIDE);(startZ > 0 ? z-- : z++))
-			for(int x=startX;(startX > 0 ? x>=0 : x<SIDE);(startX > 0 ? x-- : x++)) {
-                int index=z*SIDE*SIDE+y*SIDE+x;
-                setPixelColor(x,y,z,col);
-                if((index%2==0)||(index==(SIDE*SIDE*SIDE)-1)) {
-	                if(stop) {return;}
-                    showPixels();
-                    delay(speed);
-                }
-            }
-}
-
-void fillZ(Color col) {
-    int whichX = random(0, 10);
-    int whichY = random(0, 10);
-    int whichZ = random(0, 10);
-    int startX = (whichX%2 == 0) ? SIDE-1 : 0;
-    int startY = (whichY%2 == 0) ? SIDE-1 : 0;
-    int startZ = (whichZ%2 == 0) ? SIDE-1 : 0;
-
-	for(int z=startZ;(startZ > 0 ? z>=0 : z<SIDE);(startZ > 0 ? z-- : z++))
-	    for(int x=startX;(startX > 0 ? x>=0 : x<SIDE);(startX > 0 ? x-- : x++))
-			for(int y=startY;(startY > 0 ? y>=0 : y<SIDE);(startY > 0 ? y-- : y++)) {
-                int index=z*SIDE*SIDE+y*SIDE+x;
-                setPixelColor(x,y,z,col);
-                if((index%2==0)||(index==(SIDE*SIDE*SIDE)-1)) {
-	                if(stop) {return;}
-                    showPixels();
-                    delay(speed);
-                }
-            }
-}
-
 ///Fade all pixels to black. Or should it be called fade to off
 void fadeToBlack(void) {
     uint16_t tryCount = 0;
@@ -1537,8 +1460,6 @@ int showPixels(void) {
 // Set all pixels in the strip to a solid color
 /* THIS FUNCTION HAS BEEN DEPRECATED - Use 'void transition(Color bgcolor, bool loop)' */
 int colorAll(uint32_t c, bool loop) {
-    run = loop;
-    
     if(c > 0) {
         Color c2, c1 = getColorFromInteger(c);
         uint32_t maxColorPixel = getHighestValFromRGB(c1);
@@ -1549,12 +1470,14 @@ int colorAll(uint32_t c, bool loop) {
                 if(i <= c1.blue) c2.blue = i;
                 for(int j=0; j<strip.numPixels(); j++)
                     strip.setPixelColor(j, strip.Color(c2.red, c2.green, c2.blue));
-                if(stop) {demo = FALSE; return 0;}
+            if(stop) {demo = FALSE; return 0;}
+            if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return 0;}}
                 showPixels();
             }
     }
     else {
         Color c2, c1;
+
         for(int i=0; i<strip.numPixels(); i++) {
             c = strip.getPixelColor(i);
             if(c > 0) {
@@ -1564,6 +1487,7 @@ int colorAll(uint32_t c, bool loop) {
         }
         if(c > 0) {
             uint32_t maxColorPixel = getHighestValFromRGB(c1);
+
             for(int i=maxColorPixel; i>=0; i-=(maxColorPixel*.05)) {
                 if(i <= c1.red) c2.red = i;
                 if(i <= c1.green) c2.green = i;
@@ -1571,12 +1495,14 @@ int colorAll(uint32_t c, bool loop) {
                 for(int j=0; j<strip.numPixels(); j++)
                     strip.setPixelColor(j, strip.Color(c2.red, c2.green, c2.blue));
                 if(stop) {demo = FALSE; return 0;}
+                if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return 0;}}
                 showPixels();
             }
             //Ensure every pixel has been fully blanked
             for(int i=0; i<strip.numPixels(); i++)
                 strip.setPixelColor(i, 0);
             if(stop) {demo = FALSE; return 0;}
+            if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return 0;}}
             showPixels();
         }
         /*else {
@@ -1629,6 +1555,227 @@ void colorChaser(uint32_t c) {
         idex = PIXEL_CNT-2;
         bounce = true;
     }
+}
+
+void cheerlights(void) {
+    int red, green, blue;
+    bool headers;
+    char lastChar;
+    run = TRUE;
+    
+    if((millis()-pollTime)>POLLING_INTERVAL) {
+        if(connected) {
+            pollTime=millis();
+            client.print("GET ");
+            client.print(path);
+            client.println(" HTTP/1.0");
+            client.print("Host: ");
+            client.println(hostname);
+            client.println("Content-Length: 0");
+            client.println();
+          	/*** DEBUG ***/
+            sprintf(debug, "connected");
+        }
+        else {
+          	/*** DEBUG ***/
+            sprintf(debug, "not connected");
+          
+            if(stop) {demo = FALSE; client.stop(); return;}
+            if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {client.stop(); return;}}
+            client.stop();
+		    response = "";
+		    connected = client.connect(hostname, 80);
+        }
+    
+        requestTime=millis();
+        while((client.available()==0)&&((millis()-requestTime)<RESPONSE_TIMEOUT)) {
+            if(stop) {demo = FALSE; client.stop(); return;}
+            if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {client.stop(); return;}}
+        };
+        
+        headers=TRUE;
+        lastChar='\n';
+        response="";
+    	while(client.available()>0) {
+            if(stop) {demo = FALSE; client.stop(); return;}
+            if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {client.stop(); return;}}
+    		char thisChar=client.read();
+    		if(!headers)
+    		    response.concat(String(thisChar));
+    		else {
+    			if((thisChar=='\r')&&(lastChar=='\n')) {
+        			headers=FALSE;
+        			client.read();  //kill that last \n
+    			}
+    			lastChar=thisChar;  
+    		}
+          	/*** DEBUG ***/
+            itoa(client.available(), debug, 10);
+    	}
+
+        //if there's a valid hex color string from Cheerlights, update the color
+        if(response.length()==7) {
+            //convert the hex values from the response.body string into byte values
+    		red=hexToInt(response.charAt(1))*16+hexToInt(response.charAt(2));
+    		green=hexToInt(response.charAt(3))*16+hexToInt(response.charAt(4));
+    		blue=hexToInt(response.charAt(5))*16+hexToInt(response.charAt(6));
+        	Color col=Color(red, green, blue);
+        	
+        	//actually update the color on the cube, with a cute animation
+    	    if(col != lastCol) {
+            	lastCol = col;
+	            int c = strip.Color(col.red, col.green, col.blue);
+        	    int which = random(0, 5);
+                if(stop) {demo = FALSE; client.stop(); return;}
+                if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {client.stop(); return;}}
+        	    switch(which) {
+        	        case 0:
+        	            transition(col, run);
+        	            break;
+        	        case 1:
+        	            colorZone(c, c, c, c, run);
+        	            break;
+        	        case 2:
+        	            fillX(col);
+        	            break;
+        	        case 3:
+        	            fillY(col);
+        	            break;
+        	        case 4:
+        	            fillZ(col);
+        	            break;
+        	    }
+    	    }
+          	/*** DEBUG ***/
+            sprintf(debug, response);
+        }
+        else {
+          	/*** DEBUG ***/
+            sprintf(debug, "no reply from host");
+          	
+            if(stop) {demo = FALSE; client.stop(); return;}
+            if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {client.stop(); return;}}
+            client.stop();
+		    response = "";
+		    connected = client.connect(hostname, 80);
+        }
+    }
+    if(stop) {demo = FALSE; client.stop(); return;}
+    if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {client.stop(); return;}}
+    //In order to allow changing the brightness at any moment
+    strip.setBrightness(brightness);
+    strip.show();
+    Particle.process();    //process Spark events
+}
+
+void filler(uint32_t c1, uint32_t c2, uint32_t c3) {
+    static uint32_t whichColor = -1, whichFill;
+    Color col;
+    run = TRUE;
+
+    if(switch1) {
+        whichColor = Wheel(random(random(3, 256), random(3, 256)));
+        col = getColorFromInteger(whichColor);
+    }
+    else {
+        if(whichColor >= 2) {whichColor = 0;} else {whichColor++;}
+	    switch(whichColor) {
+	        case 0:
+	            col = getColorFromInteger(c1);
+	            break;
+	        case 1:
+	            col = getColorFromInteger(c2);
+	            break;
+	        case 2:
+	            col = getColorFromInteger(c3);
+	            break;
+	    }
+    }
+    
+    if(col != lastCol) {
+    	lastCol = col;
+        whichFill = random(0, 3);
+        switch(whichFill) {
+            case 0:
+                fillX(col);
+                break;
+            case 1:
+                fillY(col);
+                break;
+            case 2:
+                fillZ(col);
+                break;
+        }
+    }
+    if(stop) {demo = FALSE; return;}
+    if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+    delay(speed);
+}
+
+void fillX(Color col) {
+    int whichX = random(0, 10);
+    int whichY = random(0, 10);
+    int whichZ = random(0, 10);
+    int startX = (whichX%2 == 0) ? SIDE-1 : 0;
+    int startY = (whichY%2 == 0) ? SIDE-1 : 0;
+    int startZ = (whichZ%2 == 0) ? SIDE-1 : 0;
+
+	for(int x=startX;(startX > 0 ? x>=0 : x<SIDE);(startX > 0 ? x-- : x++))
+	    for(int y=startY;(startY > 0 ? y>=0 : y<SIDE);(startY > 0 ? y-- : y++))
+			for(int z=startZ;(startZ > 0 ? z>=0 : z<SIDE);(startZ > 0 ? z-- : z++)) {
+                int index=z*SIDE*SIDE+y*SIDE+x;
+                setPixelColor(x,y,z,col);
+                if((index%2==0)||(index==(SIDE*SIDE*SIDE)-1)) {
+                    if(stop) {demo = FALSE; return;}
+                    if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+                    showPixels();
+                    delay(speed);
+                }
+            }
+}
+
+void fillY(Color col) {
+    int whichX = random(0, 10);
+    int whichY = random(0, 10);
+    int whichZ = random(0, 10);
+    int startX = (whichX%2 == 0) ? SIDE-1 : 0;
+    int startY = (whichY%2 == 0) ? SIDE-1 : 0;
+    int startZ = (whichZ%2 == 0) ? SIDE-1 : 0;
+
+	for(int y=startY;(startY > 0 ? y>=0 : y<SIDE);(startY > 0 ? y-- : y++))
+	    for(int z=startZ;(startZ > 0 ? z>=0 : z<SIDE);(startZ > 0 ? z-- : z++))
+			for(int x=startX;(startX > 0 ? x>=0 : x<SIDE);(startX > 0 ? x-- : x++)) {
+                int index=z*SIDE*SIDE+y*SIDE+x;
+                setPixelColor(x,y,z,col);
+                if((index%2==0)||(index==(SIDE*SIDE*SIDE)-1)) {
+                    if(stop) {demo = FALSE; return;}
+                    if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+                    showPixels();
+                    delay(speed);
+                }
+            }
+}
+
+void fillZ(Color col) {
+    int whichX = random(0, 10);
+    int whichY = random(0, 10);
+    int whichZ = random(0, 10);
+    int startX = (whichX%2 == 0) ? SIDE-1 : 0;
+    int startY = (whichY%2 == 0) ? SIDE-1 : 0;
+    int startZ = (whichZ%2 == 0) ? SIDE-1 : 0;
+
+	for(int z=startZ;(startZ > 0 ? z>=0 : z<SIDE);(startZ > 0 ? z-- : z++))
+	    for(int x=startX;(startX > 0 ? x>=0 : x<SIDE);(startX > 0 ? x-- : x++))
+			for(int y=startY;(startY > 0 ? y>=0 : y<SIDE);(startY > 0 ? y-- : y++)) {
+                int index=z*SIDE*SIDE+y*SIDE+x;
+                setPixelColor(x,y,z,col);
+                if((index%2==0)||(index==(SIDE*SIDE*SIDE)-1)) {
+                    if(stop) {demo = FALSE; return;}
+                    if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+                    showPixels();
+                    delay(speed);
+                }
+            }
 }
 
 void cubes(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4) {
@@ -2224,25 +2371,29 @@ uint8_t fadeLinear(float value) {
 
 int colorZone(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4, bool loop) {
     uint32_t maxColorPixel, increment;
-    Color col1 = (switch2 ? getColorFromInteger(Wheel(random(random(3, 256), random(3, 256)))) : getColorFromInteger(c1));
+    Color col1 = ((switch2 || switch3) ? getColorFromInteger(Wheel(random(random(3, 256), random(3, 256)))) : getColorFromInteger(c1));
     Color col2, col3, col4;
-    if(!switch3) {
-        col2 = (switch2 ? getColorFromInteger(Wheel(random(3, strip.Color(col1.red, col1.green, col1.blue)), 
-                random(strip.Color(col1.red, col1.green, col1.blue)+1, 256))) : getColorFromInteger(c2));
-        col3 = (switch2 ? getColorFromInteger(Wheel(random(3, strip.Color(col2.red, col2.green, col2.blue)), 
-                random(strip.Color(col2.red, col2.green, col2.blue)+1, 256))) : getColorFromInteger(c3));
-        col4 = (switch2 ? getColorFromInteger(Wheel(random(3, strip.Color(col3.red, col3.green, col3.blue)), 
-                random(strip.Color(col3.red, col3.green, col3.blue)+1, 256))) : getColorFromInteger(c4));
+    if(switch2) {
+		col2 = getColorFromInteger(Wheel(random(3, strip.Color(col1.red, col1.green, col1.blue)), 
+				random(strip.Color(col1.red, col1.green, col1.blue)+1, 256)));
+		col3 = getColorFromInteger(Wheel(random(3, strip.Color(col2.red, col2.green, col2.blue)), 
+				random(strip.Color(col2.red, col2.green, col2.blue)+1, 256)));
+		col4 = getColorFromInteger(Wheel(random(3, strip.Color(col3.red, col3.green, col3.blue)), 
+				random(strip.Color(col3.red, col3.green, col3.blue)+1, 256)));
     }
-    else {
-        col2 = (switch2 ? getColorFromInteger(random(random(3, strip.Color(col1.red, col1.green, col1.blue)), 
-                random(strip.Color(col1.red, col1.green, col1.blue)+1, 256))) : getColorFromInteger(c2));
-        col3 = (switch2 ? getColorFromInteger(random(random(3, strip.Color(col2.red, col2.green, col2.blue)), 
-                random(strip.Color(col2.red, col2.green, col2.blue)+1, 256))) : getColorFromInteger(c3));
-        col4 = (switch2 ? getColorFromInteger(random(random(3, strip.Color(col3.red, col3.green, col3.blue)), 
-                random(strip.Color(col3.red, col3.green, col3.blue)+1, 256))) : getColorFromInteger(c4));
+    if(switch3) {
+		col2 = getColorFromInteger(random(random(3, strip.Color(col1.red, col1.green, col1.blue)), 
+				random(strip.Color(col1.red, col1.green, col1.blue)+1, 256)));
+		col3 = getColorFromInteger(random(random(3, strip.Color(col2.red, col2.green, col2.blue)), 
+				random(strip.Color(col2.red, col2.green, col2.blue)+1, 256)));
+		col4 = getColorFromInteger(random(random(3, strip.Color(col3.red, col3.green, col3.blue)), 
+				random(strip.Color(col3.red, col3.green, col3.blue)+1, 256)));
     }
-    
+	if ((!switch2) && (!switch3)) {
+		col2 = getColorFromInteger(c2);
+		col3 = getColorFromInteger(c3);
+		col4 = getColorFromInteger(c4);
+	}
     static Color c;
     run = loop;
     
@@ -3253,10 +3404,9 @@ int SetMode(String command) {
 		    if(receivedSpeedValue > (int)(sizeof(speedPresets)/sizeof(int)))
 		        receivedSpeedValue = sizeof(speedPresets)/sizeof(int) - 1;
 		    if (speedIndex != receivedSpeedValue) {
-		        //we don't update the speed when currently in LISTENER mode
-				if(currentModeID != LISTENER) isNewSpeed = TRUE;
+		        //we don't update the speed when currently in CHEERLIGHTS/LISTENER mode
+				if((currentModeID != CHEERLIGHTS) && (currentModeID != LISTENER)) isNewSpeed = TRUE;
 			}
-			//we don't update the speed when currently in LISTENER mode
 			if(isNewSpeed) {
     			speedIndex = receivedSpeedValue;
     			speed = speedPresets[speedIndex];
@@ -3264,9 +3414,7 @@ int SetMode(String command) {
 		}
 		else if(command.charAt(beginIdx) == 'B') {
 		    int newBrightness = command.substring(beginIdx+2, idx).toInt() * (255 * .01);	//Scale 0-100 to 0-255
-			if(brightness != newBrightness) {
-				isNewBrightness = TRUE;
-			}
+			if(brightness != newBrightness) {isNewBrightness = TRUE;}
 			if(isNewBrightness) brightness = newBrightness > 0 ? newBrightness : 1;
 		}
         else if(command.charAt(beginIdx) == 'C') {
@@ -3375,8 +3523,8 @@ int SetText(String command) {
 int setNewMode(int newModeIndex) {
     currentModeID = modeStruct[newModeIndex].modeId;
     sprintf(currentModeName,"%s", modeStruct[newModeIndex].modeName);
-    fadeToBlack();
 	resetVariables(modeStruct[newModeIndex].modeId);
+  	fadeToBlack();
 	return newModeIndex;
 }
 
@@ -3507,156 +3655,13 @@ void listen() {
                         return;
                     }
                     //if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {strip.setBrightness(brightness); return;}}
-                    if(switch1)
-                        strip.setBrightness(255);
-                    else
-                        strip.setBrightness(brightness);
+              		strip.setBrightness(brightness);
                     strip.show();
                     Particle.process();    //process Spark events
                 //}
             }
         }
     }
-}
-
-void filler(uint32_t c1, uint32_t c2, uint32_t c3) {
-    static uint32_t whichColor = -1, whichFill;
-    Color col;
-    run = TRUE;
-
-    if(switch1) {
-        whichColor = Wheel(random(random(3, 256), random(3, 256)));
-        col = getColorFromInteger(whichColor);
-    }
-    else {
-        if(whichColor >= 2) {whichColor = 0;} else {whichColor++;}
-	    switch(whichColor) {
-	        case 0:
-	            col = getColorFromInteger(c1);
-	            break;
-	        case 1:
-	            col = getColorFromInteger(c2);
-	            break;
-	        case 2:
-	            col = getColorFromInteger(c3);
-	            break;
-	    }
-    }
-    
-    if(col != lastCol) {
-    	lastCol = col;
-        whichFill = random(0, 3);
-        switch(whichFill) {
-            case 0:
-                fillX(col);
-                break;
-            case 1:
-                fillY(col);
-                break;
-            case 2:
-                fillZ(col);
-                break;
-        }
-    }
-    if(stop) {demo = FALSE; return;}
-    if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
-    delay(speed);
-}
-
-void cheerlights(void) {
-    int red, green, blue;
-    bool headers;
-    char lastChar;
-    run = TRUE;
-    
-    if((millis()-pollTime)>POLLING_INTERVAL) {
-        if(connected) {
-            pollTime=millis();
-            client.print("GET ");
-            client.print(path);
-            client.println(" HTTP/1.0");
-            client.print("Host: ");
-            client.println(hostname);
-            client.println("Content-Length: 0");
-            client.println();
-            sprintf(debug, "connected");
-        }
-        else {
-            sprintf(debug, "not connected");
-            client.stop();
-            //resetVariables(CHEERLIGHTS);
-		    response = "";
-		    connected = client.connect(hostname, 80);
-        }
-    
-        requestTime=millis();
-        while((client.available()==0)&&((millis()-requestTime)<timeout)) {
-            if(stop) {run = TRUE; client.stop(); return;}
-        };
-        
-        headers=TRUE;
-        lastChar='\n';
-        response="";
-    	while(client.available()>0) {
-    		char thisChar=client.read();
-    		if(!headers)
-    		    response.concat(String(thisChar));
-    		else {
-    			if((thisChar=='\r')&&(lastChar=='\n')) {
-        			headers=FALSE;
-        			client.read();  //kill that last \n
-    			}
-    			lastChar=thisChar;  
-    		}
-            if(stop) {run = TRUE; client.stop(); return;}
-            itoa(client.available(), debug, 10);
-    	}
-
-        //if there's a valid hex color string from Cheerlights, update the color
-        if(response.length()==7) {
-            //convert the hex values from the response.body string into byte values
-    		red=hexToInt(response.charAt(1))*16+hexToInt(response.charAt(2));
-    		green=hexToInt(response.charAt(3))*16+hexToInt(response.charAt(4));
-    		blue=hexToInt(response.charAt(5))*16+hexToInt(response.charAt(6));
-        	Color col=Color(red, green, blue);
-        	
-        	//actually update the color on the cube, with a cute animation
-    	    if(col != lastCol) {
-            	lastCol = col;
-	            int c = strip.Color(col.red, col.green, col.blue);
-        	    int which = random(0, 5);
-        	    switch(which) {
-        	        case 0:
-        	            transition(col, run);
-        	            break;
-        	        case 1:
-        	            colorZone(c, c, c, c, run);
-        	            break;
-        	        case 2:
-        	            fillX(col);
-        	            break;
-        	        case 3:
-        	            fillY(col);
-        	            break;
-        	        case 4:
-        	            fillZ(col);
-        	            break;
-        	    }
-    	    }
-            sprintf(debug, response);
-            if(stop) {run = TRUE; client.stop(); return;}
-        }
-        else {
-            sprintf(debug, "no reply from host");
-            client.stop();
-            //resetVariables(CHEERLIGHTS);
-		    response = "";
-		    connected = client.connect(hostname, 80);
-        }
-    }
-    if(stop) {run = TRUE; client.stop(); return;}
-    //In order to allow changing the brightness at any moment
-    showPixels();
 }
 
 /* ======================= AUDIO SPECTRUM mode functions ====================== */
