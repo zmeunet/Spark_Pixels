@@ -3404,8 +3404,8 @@ int SetMode(String command) {
 		    if(receivedSpeedValue > (int)(sizeof(speedPresets)/sizeof(int)))
 		        receivedSpeedValue = sizeof(speedPresets)/sizeof(int) - 1;
 		    if (speedIndex != receivedSpeedValue) {
-		        //we don't update the speed when currently in CHEERLIGHTS/LISTENER mode
-				if((currentModeID != CHEERLIGHTS) && (currentModeID != LISTENER)) isNewSpeed = TRUE;
+		        //we don't update the speed when currently in LISTENER mode
+				if(currentModeID != LISTENER) isNewSpeed = TRUE;
 			}
 			if(isNewSpeed) {
     			speedIndex = receivedSpeedValue;
