@@ -1,6 +1,13 @@
 /**
  ******************************************************************************
  * @extended SparkPixels.ino:
+ * 		Fixed issue with CHEERLIGHTS mode responsiveness to external events;
+ *      Keep connection alive in CHEERLIGHTS mode.
+ * @author   Werner Moecke
+ * @version  V2.7
+ * @date     25-January-2016 ~ 01-February-2016
+ *
+ * @extended SparkPixels.ino:
  *		New mode: FILLER (by Werner Moecke [based on idea by Alex Hornstein])
  *		New Functions: filler()
  *
@@ -1563,7 +1570,23 @@ void cheerlights(void) {
     char lastChar;
     run = TRUE;
     
-    if((millis()-pollTime)>POLLING_INTERVAL) {
+    if((millis()-pollTime)<=POLLING_INTERVAL) {
+        if(stop) {demo = FALSE; client.stop(); return;}
+        if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {client.stop(); return;}}
+	    if(!Particle.connected) {
+	        Particle.connect();
+	        varsRegistered = waitFor(Particle.connected, 1000);
+	    }
+	    else {
+            //In order to allow changing the brightness at any moment
+            strip.setBrightness(brightness);
+            strip.show();
+            //process Spark events
+            Particle.process();
+            delay(100);
+	    }
+    }
+    else {
         if(connected) {
             pollTime=millis();
             client.print("GET ");
@@ -1584,13 +1607,18 @@ void cheerlights(void) {
             if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {client.stop(); return;}}
             client.stop();
 		    response = "";
-		    connected = client.connect(hostname, 80);
+		    if(!Particle.connected) {
+		        Particle.connect();
+		        varsRegistered = waitFor(Particle.connected, 1000);
+		    }
+		    else {connected = client.connect(hostname, 80);}
         }
     
         requestTime=millis();
         while((client.available()==0)&&((millis()-requestTime)<RESPONSE_TIMEOUT)) {
             if(stop) {demo = FALSE; client.stop(); return;}
             if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {client.stop(); return;}}
+            Particle.process();    //process Spark events
         };
         
         headers=TRUE;
@@ -1657,15 +1685,13 @@ void cheerlights(void) {
             if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {client.stop(); return;}}
             client.stop();
 		    response = "";
-		    connected = client.connect(hostname, 80);
+		    if(!Particle.connected) {
+		        Particle.connect();
+		        varsRegistered = waitFor(Particle.connected, 1000);
+		    }
+		    else {connected = client.connect(hostname, 80);}
         }
     }
-    if(stop) {demo = FALSE; client.stop(); return;}
-    if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {client.stop(); return;}}
-    //In order to allow changing the brightness at any moment
-    strip.setBrightness(brightness);
-    strip.show();
-    Particle.process();    //process Spark events
 }
 
 void filler(uint32_t c1, uint32_t c2, uint32_t c3) {
