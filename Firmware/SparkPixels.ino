@@ -1,7 +1,7 @@
 /**
  ******************************************************************************
  * @extended SparkPixels.ino:
- *		New mode: DIGI, YOUTUBECUBE, IFTTT WEATHER
+ *		New mode: DIGI, CUBE CLASSICS, IFTTT WEATHER
  *		New setting: AUX Switches
  *		New Functions: transitionALl, transitionOne, transitionHelper, getTransitionStep, 
  *                     clamp, makeAuxSwitchList, getAuxSwitchIndexFromID, updateAuxSwitches, 
