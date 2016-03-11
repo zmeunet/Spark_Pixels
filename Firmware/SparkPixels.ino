@@ -1,5 +1,12 @@
 /**
  ******************************************************************************
+ * @fixed SparkPixels.ino:
+ * 	Fixed issue with CUBE CLASSICS mode breaking the loop to runMode() after exit;
+ *      Also removed unnecessary calls to transitionAll() within runCubeClassics() and iftttWeather().
+ * @author   Werner Moecke, Kevin Carlborg
+ * @version  RC V3.0
+ * @date     10-March-2016 ~ 11-March-2016
+ *
  * @extended SparkPixels.ino:
  *		New mode: DIGI, CUBE CLASSICS, IFTTT WEATHER
  *		New setting: AUX Switches
@@ -832,7 +839,7 @@ bool connected;         // flag if we have a solid TCP connection
 bool cheerLightsEnabled;
 Color cheerLightsColor;
 int requestTime, pollTime;
-Thread* cheerlightsThread;  //https://community.particle.io/t/particle-photon-multi-blink-sample-using-threads/16214/3
+//Thread* cheerlightsThread;  //https://community.particle.io/t/particle-photon-multi-blink-sample-using-threads/16214/3
 //https://github.com/pipprojects/WM/blob/master/water-meter-2.ino
 
 /* ============================ Required Prototypes ============================= */
@@ -1037,7 +1044,7 @@ void publishCloudVariables() {
         varsRegistered &= Particle.function("CubePainter",  CubePainter);
         varsRegistered &= Particle.variable("debug",        debug);
         //varsRegistered &= Particle.variable("wifi",         wifi);
-        //varsRegistered &= Particle.variable("tHour",        tHour);
+        varsRegistered &= Particle.variable("tHour",        tHour);
         varsRegistered &= Particle.variable("speed",        speedIndex);
         varsRegistered &= Particle.variable("brightness",   brightness);
     	varsRegistered &= Particle.variable("modeList",		modeNameList);
@@ -1177,14 +1184,13 @@ void makeAuxSwitchList(void) {
 
 /**Update local Aux Switch variables
  *  @id the Aux Switch ID to update
- *  @return 1 if successful
+ *  @return current state of the switch (0 or 1)
  *  @return -1 if Switch ID was not found
  */
 int updateAuxSwitches(int id) {
     switch(id) {
         case ASO:
-            autoShutOff = auxSwitchStruct[getAuxSwitchIndexFromID(id)].auxSwitchState;
-            return 1;
+            return autoShutOff = auxSwitchStruct[getAuxSwitchIndexFromID(id)].auxSwitchState;
     }
     return -1;
 }
@@ -1204,8 +1210,8 @@ void loop() {
         
         //At every minute, check for connection and register cloud variables
         if(Particle.connected()) {
-            Time.zone(TIME_ZONE_OFFSET);    //Set time zone
-            tHour = Time.hour();            //used to check for correct time zone
+            Time.zone(timeZone);    //Set time zone
+            tHour = Time.hour();    //used to check for correct time zone
             //wifi = WiFi.RSSI();
         }
         if(!varsRegistered) {publishCloudVariables();}
@@ -1438,6 +1444,7 @@ void runMode() {
 		case NORMAL:
 		default:
 		    transitionAll(incandescent,LINEAR); //transition(incandescent, false);    //colorAll(defaultColor, demo);
+		    run = FALSE;
 			break;
     }    
 }
@@ -1525,10 +1532,11 @@ void resetVariables(int modeIndex) {
             }
             transitionAll(black,LINEAR);	//fadeToBlack();
 		    break;
+     	case COLORALL:
+		    break;
 		case DIGI:
 		case IFTTTWEATHER:
 		case CUBE_PAINTER:
-     	case COLORALL:
      	case COLORBREATHE:
      	case CHASER:
 		case ZONE:
@@ -1614,7 +1622,7 @@ void cubeGreeting(int textMode, int frameCount, float pos) {
 void transitionAll(Color endColor, uint16_t method) {
     int numSteps = 8;   //This could be an input param to this function
     uint32_t startColor[strip.numPixels()];
-    run = FALSE;
+    //run = FALSE;
     
     //Save the start color for each pixel - yeah, I know this is using a lot of memory, but I'm not smart enough to do it a better way
     for(int index = 0; index < strip.numPixels(); index++) {
@@ -1823,7 +1831,7 @@ void runCubeClassics(uint32_t c) {
 			{
 			    iterations = 20;
 			    if(0 == effect_z_updown(iterations, col)) {
-			        transitionAll(black, LINEAR);
+			        //transitionAll(black, LINEAR);
 			        return;
 			    }
 				break;
@@ -1832,20 +1840,20 @@ void runCubeClassics(uint32_t c) {
 			{
 			    for(loop=0;loop<3;loop++) {
 			        transitionAll(black, LINEAR);
-			        stackingRope(0, col);
+			        if(0 == stackingRope(0, col)) { return; }
 			        transitionAll(black, LINEAR);
-			        stackingRope(1, col);
+			        if(0 == stackingRope(1, col)) { return; }
 			   // collapsingSides(col);
     			}
 				break;
 			}
 			case 2:
 			{
-				transitionAll(black, LINEAR);
+				//transitionAll(black, LINEAR);
 			    iterations = 100;
 			    for(int axis=AXIS_X;axis<=AXIS_Z;axis++) {
 			        if(0 == effect_wormsqueeze(2, axis, -1, iterations, col)) {
-			            transitionAll(black, LINEAR);
+			            //transitionAll(black, LINEAR);
 			            return;
 			        }
 			    }
@@ -1853,11 +1861,11 @@ void runCubeClassics(uint32_t c) {
 			}
 			case 3: 
 			{
-			    transitionAll(black, LINEAR);
+			    //transitionAll(black, LINEAR);
 			    for(loop=0;loop<5;loop++) {
 			        for(int axis=AXIS_X;axis<=AXIS_Z;axis++) {
 			           if(0 == effect_planboing(axis, col)) {
-			               transitionAll(black, LINEAR);
+			               //transitionAll(black, LINEAR);
 			               return;
 			           }
 			        }
@@ -1870,13 +1878,13 @@ void runCubeClassics(uint32_t c) {
 	//effect_telcstairs(1,0xff, col);
 			case 4:
 			{
-			    transitionAll(black, LINEAR);
+			    //transitionAll(black, LINEAR);
 			    int suspendTime = 1300;
 			    for(loop=0;loop<5;loop++) {
 			        for(int axis=AXIS_X;axis<=AXIS_Z;axis++) {
 			            for(int j=0;j<4;j++) {
 			                if(0 == effect_axis_updown_randsuspend(axis, suspendTime,j%2,col)) {
-			                    transitionAll(black, LINEAR);
+			                    //transitionAll(black, LINEAR);
 			                    return;
 			                }
 			            }
@@ -1886,12 +1894,12 @@ void runCubeClassics(uint32_t c) {
 			}
 			case 5:
 			{
-				transitionAll(black, LINEAR);
+				//transitionAll(black, LINEAR);
 				for(loop=0;loop<5;loop++) {
 			    	for(int axis=AXIS_Z;axis>=AXIS_X;axis--) {
 			            for(int j=0;j<4;j++) {
 			                if(0 == effect_loadbar(axis, col)) {
-			                    transitionAll(black, LINEAR);
+			                    //transitionAll(black, LINEAR);
 			                    return;
 			                }
 			            }
@@ -1901,13 +1909,13 @@ void runCubeClassics(uint32_t c) {
 			}
 			case 6:
 			{
-				transitionAll(black, LINEAR);
+				//transitionAll(black, LINEAR);
 				for(loop=0;loop<3;loop++) {
 			    	for(int axis=AXIS_X;axis<=AXIS_Z;axis++) {
 			    	    for(int mode=1;mode<=2;mode++) {
 			                for(int origin=0;origin<=1;origin++) {
 			                    if(0 == effect_boxside_randsend_parallel (axis, origin, mode, col)) {
-			                        transitionAll(black, LINEAR);
+			                        //transitionAll(black, LINEAR);
 			                        return;
 			                    }
 			                    delay(1500);
@@ -1919,13 +1927,13 @@ void runCubeClassics(uint32_t c) {
 			}
 			case 7:
 			{
-				transitionAll(black, LINEAR);
+				//transitionAll(black, LINEAR);
 				iterations = 120;
 			    for(int mode=0;mode<=1;mode++) {
 			        for(int drawmode=1;drawmode<=3;drawmode++) {
 			            //boingboing(250, 0x01, 0x02, col);
 			            if(0 == boingboing(iterations, mode, drawmode, col)) {
-			                transitionAll(black, LINEAR);
+			                //transitionAll(black, LINEAR);
 			                return;
 			            }
 			        }
@@ -1934,21 +1942,21 @@ void runCubeClassics(uint32_t c) {
 			}
 			case 8:
 			{
-			    transitionAll(black, LINEAR);
+			    //transitionAll(black, LINEAR);
 			    iterations = 2000;
 			    if(0 == ripples (iterations, col)) {
-			        transitionAll(black, LINEAR);
+			        //transitionAll(black, LINEAR);
 			        return;
 			    }
 				break;
 			}
 			case 9:
 			{
-			    transitionAll(black, LINEAR);
+			    //transitionAll(black, LINEAR);
 			    iterations = 1200;
 			    for(int axis=AXIS_X;axis<=AXIS_Z;axis++) {
 			        if(0 == linespin (iterations, axis, col)) {
-			            transitionAll(black, LINEAR);
+			            //transitionAll(black, LINEAR);
 			            return;
 			        }
 			    }
@@ -1956,11 +1964,11 @@ void runCubeClassics(uint32_t c) {
 			}
 			case 10:
 			{
-			 	transitionAll(black, LINEAR);
+			 	//transitionAll(black, LINEAR);
 			    iterations = 1200;
 			    for(int axis=AXIS_X;axis<=AXIS_Z;axis++) {
 			        if(0 == sinelines (iterations, axis, col)) {
-			            transitionAll(black, LINEAR);
+			            //transitionAll(black, LINEAR);
 			            return;
 			        }
 			    }
@@ -1968,10 +1976,10 @@ void runCubeClassics(uint32_t c) {
 			}
 			case 11:
 			{
-				transitionAll(black, LINEAR);
+				//transitionAll(black, LINEAR);
 			    iterations = 1500;
 			    if(0 == spheremove (iterations,  col)) {
-			        transitionAll(black, LINEAR);
+			        //transitionAll(black, LINEAR);
 			        return;
 			    }
 				break;
@@ -1979,10 +1987,10 @@ void runCubeClassics(uint32_t c) {
 			case 12:
 			default:
 			{
-			    transitionAll(black, LINEAR);
+			    //transitionAll(black, LINEAR);
 			    iterations = 20;
 			    if(0 == fireworks(iterations, 50, col)) {
-			        transitionAll(black, LINEAR);
+			        //transitionAll(black, LINEAR);
 			        return;
 			    }
 				break;
@@ -3200,7 +3208,6 @@ int randomPixelFill(uint32_t c) {
     }
     
     arrayShuffle(pixelFillOrder, sizeof pixelFillOrder / sizeof pixelFillOrder[0]);
-    if(switch1) {c = Wheel(random(random(2, 256), random(2, 256)));}
     
     for(i=0; i<strip.numPixels(); i++) {
         if(stop) {demo = FALSE; return 0;}
@@ -5545,6 +5552,7 @@ int FnRouter(String command) {
 		//Expect a string like this: SETTIMEZONE:-6
         timeZone = command.substring(colonIdx+1).toInt();
         Time.zone(timeZone);
+        tHour = Time.hour();
         return timeZone;
     }
 	else if(command.substring(beginIdx, colonIdx)=="SETAUXSWITCH") {
