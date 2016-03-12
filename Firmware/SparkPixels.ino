@@ -1469,7 +1469,7 @@ void resetVariables(int modeIndex) {
 		    /*** DEBUG ***/
             //IPAddress myIp = WiFi.localIP();
             //sprintf(debug, "%d.%d.%d.%d", myIp[0], myIp[1], myIp[2], myIp[3]);
-            
+            transitionAll(black,LINEAR);
 		    countdown = 0;
         	Udp.stop();
             while(!Udp.setBuffer(EXPECTED_PACKET_SIZE)) { /* Start the UDP */ }
