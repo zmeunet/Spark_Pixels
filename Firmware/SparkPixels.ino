@@ -1,11 +1,18 @@
 /**
  ******************************************************************************
  * @fixed SparkPixels.ino:
+ * 	Added color picker and switch to pulse_oneColorAll();
+ * 	Replaced the original IFTTT WEATHER code with call to pulse_oneColorAll()
+ * @author   Werner Moecke
+ * @version  RC V3.0
+ * @date     12-March-2016
+ *
+ * @fixed SparkPixels.ino:
  * 	Fixed issue with CUBE CLASSICS mode breaking the loop to runMode() after exit;
  *      Also removed unnecessary calls to transitionAll() within runCubeClassics() and iftttWeather().
  * @author   Werner Moecke, Kevin Carlborg
  * @version  RC V3.0
- * @date     10-March-2016 ~ 11-March-2016
+ * @date     11-March-2016
  *
  * @extended SparkPixels.ino:
  *		New mode: DIGI, CUBE CLASSICS, IFTTT WEATHER
@@ -137,7 +144,6 @@
  ******************************************************************************/
 SYSTEM_THREAD(ENABLED);
 
-//#include "neopixel.h"
 #include "neopixel/neopixel.h"
 #include <math.h>
 #define ON                      1
@@ -312,7 +318,7 @@ modeParams modeStruct[] =
         {  STANDBY,                     "OFF",                  0,          0,      FALSE   },  //credit: Kevin Carlborg
         {  NORMAL,                      "LIGHT",                0,          0,      FALSE   },  //credit: Kevin Carlborg
         {  ACIDDREAM,                   "ACID DREAM",           0,          0,      FALSE   },  //credit: Werner Moecke
-        {  COLORBREATHE,                "BREATHE",              0,          0,      FALSE   },  //credit: Werner Moecke
+        {  COLORBREATHE,                "BREATHE",              1,          1,      FALSE   },  //credit: Werner Moecke
         {  RAINBOW_BURST,               "BURST",                0,          0,      FALSE   },  //credit: Werner Moecke
         {  CHASER,                      "CHASER",               1,          0,      FALSE   },  //credit: Kevin Carlborg
   		{  CHEERLIGHTS,                 "CHEERLIGHTS",          0,          0,      FALSE   },  //credit: Alex Hornstein, Werner Moecke (stability fixes, extra transition effects)
@@ -364,7 +370,8 @@ switchParams switchTitleStruct[] =
 	   {  FILLER,        "Random Colors",       "",                    "",                    ""                     },
 	   {  ZONE,          "Loop",                "Random Colors",       "Coordinated Colors",  ""                     },
 	   {  DIGI,          "Random Color Fill",   "Fade In",             "",                    ""                     },
-	   {  CUBE_CLASSICS, "Color Sweep",         "",         "",                    ""                     }
+	   {  CUBE_CLASSICS, "Color Sweep",         "",                    "",                    ""                     },
+	   {  COLORBREATHE,  "Random Colors",       "",                    "",                    ""                     }
 };
 
 /* ======================= ADD NEW AUX SWITCH STRUCT HERE. ======================= 
@@ -952,7 +959,6 @@ void rainbowCycle(void);
 void christmasTree(void);
 void christmasLights(void);
 void digi(uint32_t color1);
-void pulse_oneColorAll(void);
 void police_light_strobo(void);
 void theaterChaseRainbow(void);
 void rain(uint32_t c);
@@ -963,6 +969,7 @@ void runCubeClassics(uint32_t c);
 void setplane_x (int x, Color col);
 void setplane_y (int y, Color col);
 void setplane_z (int z, Color col);
+void pulse_oneColorAll(uint32_t color1);
 void textSpin(uint32_t color1, uint32_t color2);
 void textScroll(uint32_t color1, uint32_t color2);
 void findRandomSnowFlakesPositions(int numFlakes);
@@ -1353,7 +1360,7 @@ void runMode() {
 	        transitionAll(getColorFromInteger(color1),POLAR);	//transition(getColorFromInteger(color1), false);  //colorAll(color1, demo);
 	        break;
      	case COLORBREATHE:
-	        pulse_oneColorAll();
+	        pulse_oneColorAll(color1);
 	        break;
 		case COLORFADE:
 		    color_fade();
@@ -1794,14 +1801,18 @@ int showPixels(void) {
  *  Breathing LED code credit: http://sean.voisen.org/blog/2011/10/breathing-led-with-arduino/
 **/
 void iftttWeather(uint32_t c) {
+    static int oldBrightness = brightness;
     if((millis() - lastCommandReceived) < iftttWeatherInterval) {
-        int oldBrightness = brightness;
-        float val = (exp(sin(millis()/2000.0*PI)) - 0.36787944)*108.0;  //set "breathing" brightness level
-        brightness = (int)val;
-        transitionAll(getColorFromInteger(c), LINEAR);    //colorAll(c, true);
-        brightness = oldBrightness;
+        //int oldBrightness = brightness;
+        //float val = (exp(sin(millis()/2000.0*PI)) - 0.36787944)*108.0;  //set "breathing" brightness level
+        //brightness = (int)val;
+        //background(getColorFromInteger(c));
+        switch1 = FALSE;
+        pulse_oneColorAll(c);
+        //brightness = oldBrightness;
     }
     else {
+        brightness = oldBrightness;
         currentModeID = lastModeID;
         setNewMode(getModeIndexFromID(currentModeID));
     }
@@ -4601,9 +4612,9 @@ void flicker(uint32_t c) {
 }
 
 //Fade in/out a color using brightness/saturation
-void pulse_oneColorAll() { //-PULSE BRIGHTNESS ON ALL LEDS TO ONE COLOR 
+void pulse_oneColorAll(uint32_t color1) { //-PULSE BRIGHTNESS ON ALL LEDS TO ONE COLOR 
     static int ival = 0;
-    static uint32_t xhue = Wheel(random(256));
+    static uint32_t xhue = switch1 ? Wheel(random(256)) : color1;
     static int bouncedirection = 0;
     float isteps = constrain(brightness*.03, .6, brightness*.25);
 	run = TRUE;
@@ -4617,7 +4628,7 @@ void pulse_oneColorAll() { //-PULSE BRIGHTNESS ON ALL LEDS TO ONE COLOR
         ival -= isteps;
         if (ival <= 0) {
             bouncedirection = 0;
-            xhue = Wheel(random(256));
+            xhue = switch1 ? Wheel(random(256)) : color1;
         }
     }
     for(int i = 0; i < PIXEL_CNT; i++) {
