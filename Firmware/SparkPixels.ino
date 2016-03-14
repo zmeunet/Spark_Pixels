@@ -1,10 +1,17 @@
 /**
  ******************************************************************************
  * @fixed SparkPixels.ino:
+ * 	Added text capability to iftttWeather();
+ * 	Fixed a few bugs and glitches
+ * @author   Werner Moecke
+ * @version  V3.2
+ * @date     13-March-2016 ~ 14-March-2016
+ *
+ * @fixed SparkPixels.ino:
  * 	Added color picker and switch to pulse_oneColorAll();
  * 	Replaced the original IFTTT WEATHER code with call to pulse_oneColorAll()
  * @author   Werner Moecke
- * @version  RC V3.0
+ * @version  V3.1
  * @date     12-March-2016
  *
  * @fixed SparkPixels.ino:
@@ -163,16 +170,16 @@ Adafruit_NeoPixel strip = Adafruit_NeoPixel(PIXEL_CNT, PIXEL_PIN, PIXEL_TYPE);
 
 /* ======================= ADD NEW MODE ID HERE. ======================= */
 // Mode ID Defines
-const int STANDBY                     = 0; //credit: Kevin Carlborg
-const int NORMAL                      = 1; //credit: Kevin Carlborg
-const int COLORALL                    = 2; //credit: Kevin Carlborg
-const int CHASER                      = 3; //credit: Kevin Carlborg
-const int ZONE                        = 4; //credit: Kevin Carlborg
-const int COLORPULSE                  = 5; //credit: Werner Moecke
-const int COLORSTRIPES                = 6; //credit: Werner Moecke
-const int ACIDDREAM                   = 7; //credit: Werner Moecke
-const int RAINBOW                     = 8; //credit: Kevin Carlborg
-const int THEATERCHASE                = 9; //credit: Kevin Carlborg
+const int STANDBY                     = 0;  //credit: Kevin Carlborg
+const int NORMAL                      = 1;  //credit: Kevin Carlborg
+const int COLORALL                    = 2;  //credit: Kevin Carlborg
+const int CHASER                      = 3;  //credit: Kevin Carlborg
+const int ZONE                        = 4;  //credit: Kevin Carlborg
+const int COLORPULSE                  = 5;  //credit: Werner Moecke
+const int COLORSTRIPES                = 6;  //credit: Werner Moecke
+const int ACIDDREAM                   = 7;  //credit: Werner Moecke
+const int RAINBOW                     = 8;  //credit: Kevin Carlborg
+const int THEATERCHASE                = 9;  //credit: Kevin Carlborg
 const int FROZEN                      = 10; //credit: Kevin Carlborg
 const int COLLIDE                     = 11; //credit: Kevin Carlborg
 const int COLORFADE                   = 12; //credit: Werner Moecke
@@ -200,12 +207,12 @@ const int CHEERLIGHTS                 = 33; //credit: Alex Hornstein, Werner Moe
 const int FILLER                      = 34; //credit: Werner Moecke (based on idea by Alex Hornstein)
 const int CUBE_PAINTER                = 35; //credit: Werner Moecke (based on idea by Alex Hornstein)
 const int CUBE_CLASSICS               = 36; //credit: http://www.instructables.com/id/Led-Cube-8x8x8/, Kevin Carlborg (L3D Cube port)
-const int IFTTTWEATHER                = 37; //credit: Kevin Carlborg
+const int IFTTTWEATHER                = 37; //credit: Kevin Carlborg, Werner Moecke (code improvements)
 const int DIGI                        = 38; //credit: Kevin Carlborg
 
 /* ======================= ADD NEW AUX SWITCH ID HERE. ======================= */
 // AUX SWITCH ID Defines
-const int ASO         = 0;
+const int ASO = 0;
 
 const int MAX_NUM_COLORS = 6;
 const int MAX_NUM_SWITCHES = 4;
@@ -227,11 +234,11 @@ typedef struct switchParams {
 } switchParams;
 
 typedef struct auxSwitchParams {
-    int      auxSwitchId;
-    bool     auxSwitchState;
-    char     auxSwitchTitle[20];
-    char     auxSwitchOnName[20];
-    char     auxSwitchOffName[20];
+    int  auxSwitchId;
+    bool auxSwitchState;
+    char auxSwitchTitle[20];
+    char auxSwitchOnName[20];
+    char auxSwitchOffName[20];
 } auxSwitchParams;
 
 /** An RGB color. */
@@ -335,7 +342,7 @@ modeParams modeStruct[] =
         {  FILLER,                      "FILLER",               3,          1,      FALSE   },  //credit: Werner Moecke (based on idea by Alex Hornstein)
         {  FLICKER,                     "FLICKER",              1,          0,      FALSE   },  //credit: Werner Moecke
         {  FROZEN,                      "FROZEN",               0,          0,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (flake fading)
-        {  IFTTTWEATHER ,               "IFTTT WEATHER",        0,          0,      FALSE   },  //credit: Kevin Carlborg
+        {  IFTTTWEATHER,                "IFTTT",                0,          0,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (code improvements)
         {  LISTENER,                    "LISTENER",             0,          0,      FALSE   },  //credit: Werner Moecke
         {  PLASMA,                      "PLASMA",               0,          0,      FALSE   },  //credit: Alex Hornstein, Werner Moecke (speed settings)
         {  POLICELIGHTS,                "POLICE",               0,          0,      FALSE   },  //credit: Werner Moecke
@@ -400,9 +407,9 @@ const int speedPresets[] = {120, 100, 80, 70, 50, 30, 20, 10, 1};  //in mSec, sl
 //Time Interval constants            hh*mm*ss*ms    
 unsigned long oneMinuteInterval =     1*60*1000;	//Read temp every minute
 unsigned long twoMinuteInterval =     2*60*1000;	//Change mode every 2 minutes in demo
-unsigned long oneHourInterval =       1*60*60*1000;  //auto off in 1 hr when night time
-unsigned long oneDayInterval = 	     24*60*60*1000;  //time sync interval - 24 hours
-unsigned long iftttWeatherInterval = 10*60*1000;  //revert back to last mode for IFTTT Weather
+unsigned long oneHourInterval =       1*60*60*1000; //auto off in 1 hr when night time
+unsigned long oneDayInterval = 	     24*60*60*1000; //time sync interval - 24 hours
+unsigned long iftttWeatherInterval = 10*60*1000;    //revert back to last mode for IFTTT Weather
 unsigned long start;
 
 //Program Flags
@@ -430,6 +437,8 @@ uint32_t c1, c2;
 uint8_t colorWheel;
 //Variables to hold the switch settings to each mode requiring them
 bool switch1, switch2, switch3, switch4;
+bool lastSwitchState[4];
+int lastBrightness;
 int lastRand = 0;
 int lastLastRand = 0;
 int timeZone = TIME_ZONE_OFFSET;
@@ -520,6 +529,8 @@ void showChar(char a, Point origin, Point angle, Color col);
 void scrollText(String text, Point initialPosition, Color col);
 void scrollSpinningText(String text, Point initialPosition, Color col);
 void showChar(char a, Point origin, Point pivot, Point angle, Color col);
+bool isNewText = FALSE;
+
 /** Font table */
 unsigned char fontTable[2048] =
 {
@@ -849,6 +860,10 @@ int requestTime, pollTime;
 //Thread* cheerlightsThread;  //https://community.particle.io/t/particle-photon-multi-blink-sample-using-threads/16214/3
 //https://github.com/pipprojects/WM/blob/master/water-meter-2.ino
 
+/* ============================ IFTTT mode defines =========================== */
+int whichTextMode = 0;
+
+
 /* ============================ Required Prototypes ============================= */
 int showPixels(void);
 int hexToInt(char val);
@@ -996,6 +1011,7 @@ void setup() {
     speedIndex = 5;
     speed = speedPresets[speedIndex];
     brightness = 20 * (255 * .01);	//Scale 0-100 to 0-255;
+  	lastBrightness = brightness;
     run = TRUE;                     //was: FALSE;
     stop = FALSE;
     demo = TRUE;
@@ -1003,6 +1019,10 @@ void setup() {
     switch2 = FALSE;
     switch3 = FALSE;
     switch4 = FALSE;
+  	lastSwitchState[0] = switch1;
+  	lastSwitchState[1] = switch2;
+  	lastSwitchState[2] = switch3;
+  	lastSwitchState[3] = switch4;
     autoShutOff = FALSE;    //Initialize auto shut off mode variable
 	currentModeID = getModeIndexFromID(NORMAL);
 	defaultColor = strip.Color(incandescent.red, incandescent.green, incandescent.blue);
@@ -1308,7 +1328,7 @@ void runDemo() {
             if(textMode <= 5) 
                 pos = map(strlen(message), 1, 63, -(SIDE*.5), 0);
             else
-                pos = map(strlen(message), 1, 63, -SIDE, 0);
+                pos = map(strlen(message), 1, 63, -(SIDE*.9), 0);
             textMode++;
             if(textMode > 6) {
                 if(cycleCount == floor((sizeof(modeStruct) / sizeof(modeStruct[0]))*.25)-1)
@@ -1513,7 +1533,7 @@ void resetVariables(int modeIndex) {
 		    break;
 		case TEXTSPIN:
             sprintf(message, textInputString);
-            pos = map(strlen(message), 1, 63, -SIDE, 0);
+            pos = map(strlen(message), 1, 63, -(SIDE*.9), 0);
             transitionAll(black,LINEAR);	//fadeToBlack();
             if(!switch2)
                 transitionAll(getColorFromInteger(color2), LINEAR);
@@ -1541,8 +1561,21 @@ void resetVariables(int modeIndex) {
 		    break;
      	case COLORALL:
 		    break;
-		case DIGI:
 		case IFTTTWEATHER:
+		{
+            switch(whichTextMode) {
+                case 0:
+                case 1:
+                    pos = map(strlen(message), 1, 63, -(SIDE*.5), 0);
+                    break;
+                case 2:
+                    pos = map(strlen(message), 1, 63, -(SIDE*.9), 0);
+                    break;
+            }
+            transitionAll(black,LINEAR);
+		    break;
+		}   
+		case DIGI:
 		case CUBE_PAINTER:
      	case COLORBREATHE:
      	case CHASER:
@@ -1801,18 +1834,50 @@ int showPixels(void) {
  *  Breathing LED code credit: http://sean.voisen.org/blog/2011/10/breathing-led-with-arduino/
 **/
 void iftttWeather(uint32_t c) {
-    static int oldBrightness = brightness;
-    if((millis() - lastCommandReceived) < iftttWeatherInterval) {
-        //int oldBrightness = brightness;
-        //float val = (exp(sin(millis()/2000.0*PI)) - 0.36787944)*108.0;  //set "breathing" brightness level
-        //brightness = (int)val;
-        //background(getColorFromInteger(c));
-        switch1 = FALSE;
-        pulse_oneColorAll(c);
-        //brightness = oldBrightness;
+    unsigned long calculatedInterval;
+    
+    //If we're displaying text, configure the interval individually
+    if(isNewText) {
+        switch(whichTextMode) {
+            case 0:
+                calculatedInterval = iftttWeatherInterval * .2;
+                break;
+            case 1:
+                calculatedInterval = iftttWeatherInterval * .3;
+                break;
+            case 2:
+                calculatedInterval = iftttWeatherInterval;
+                break;
+        }
+    }
+    else {calculatedInterval = iftttWeatherInterval;}
+    
+    if((millis() - lastCommandReceived) < calculatedInterval) {
+        if(isNewText) {
+            switch1 = TRUE;
+            switch(whichTextMode) {
+                case 0:
+                    textMarquee(c, 0);
+                    break;
+                case 1:
+                    textScroll(c, 0);
+                    break;
+                case 2:
+                    textSpin(c, 0);
+                    break;
+            }
+        }
+        else {
+            switch1 = FALSE;
+            pulse_oneColorAll(c);
+        }
     }
     else {
-        brightness = oldBrightness;
+        whichTextMode++;
+        if(whichTextMode > 2) {whichTextMode = 0;}
+        isNewText = FALSE;
+        brightness = lastBrightness;
+        switch1 = lastSwitchState[0];
         currentModeID = lastModeID;
         setNewMode(getModeIndexFromID(currentModeID));
     }
@@ -5470,6 +5535,13 @@ int SetMode(String command) {
                     break;
             }
 		}
+		else if(command.charAt(beginIdx) == 'W') {
+		    if(strlen(command.substring(beginIdx+2, idx).c_str()) > 63)
+		        sprintf(message,"%s", command.substring(beginIdx+2, beginIdx+65).c_str());
+            else
+                sprintf(message,"%s", command.substring(beginIdx+2, idx).c_str());
+            isNewText = TRUE;
+		}
 
 		// T for Toggle switch - expect 0 or 1 for false or true
 		// S for Switch would have made more sense, but want to keep this backwards compatible and S is alreay Speed
@@ -5477,15 +5549,19 @@ int SetMode(String command) {
             switch(command.charAt(beginIdx+1)) {
                 case '1':
                     switch1 = command.substring(beginIdx+3, idx).toInt() & 1;
+                    lastSwitchState[0] = switch1;
                     break;
                 case '2':
                     switch2 = command.substring(beginIdx+3, idx).toInt() & 1;
+                    lastSwitchState[1] = switch2;
                     break;
                 case '3':
                     switch3 = command.substring(beginIdx+3, idx).toInt() & 1;
+                    lastSwitchState[1] = switch3;
                     break;
                 case '4':
                     switch4 = command.substring(beginIdx+3, idx).toInt() & 1;
+                    lastSwitchState[3] = switch4;
                     break;
             }
 		}
@@ -5506,6 +5582,7 @@ int SetMode(String command) {
 		if(currentModeID != LISTENER) showPixels();
 		
 		if(isNewBrightness) {
+		    lastBrightness = brightness;
 			//Let the sender know we got the new brightness command
 			returnValue = BRIGHTNESS_SET;
 		}
@@ -5601,6 +5678,7 @@ int SetText(String command) {
 
 //Change Mode based on the modeStruct array index
 int setNewMode(int newModeIndex) {
+    lastModeID = currentModeID;
     currentModeID = modeStruct[newModeIndex].modeId;
     sprintf(currentModeName,"%s", modeStruct[newModeIndex].modeName);
 	resetVariables(modeStruct[newModeIndex].modeId);
