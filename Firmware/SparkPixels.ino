@@ -1,8 +1,11 @@
 /**
  ******************************************************************************
  * @fixed SparkPixels.ino:
- * 	Added text capability to iftttWeather();
- * 	Fixed a few bugs and glitches
+ * 	Renamed IFTTT WEATHER to IFTTT
+ * 	 The new IFTTT input MUST be: M:IFTTT,C6:xxxxxx,
+ * 	Added text capability to iftttWeather()
+ * 	 The new IFTTT input CAN be: M:IFTTT,C6:xxxxxx,W:<string>,
+ *	Fixed a few bugs and glitches
  * @author   Werner Moecke
  * @version  V3.2
  * @date     13-March-2016 ~ 14-March-2016
