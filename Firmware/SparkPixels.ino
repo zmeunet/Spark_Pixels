@@ -1331,7 +1331,7 @@ void runDemo() {
             if(textMode <= 5) 
                 pos = map(strlen(message), 1, 63, -(SIDE*.5), 0);
             else
-                pos = map(strlen(message), 1, 63, -(SIDE*.9), 0);
+                pos = map(strlen(message), 1, 63, -(SIDE*.98), 0);
             textMode++;
             if(textMode > 6) {
                 if(cycleCount == floor((sizeof(modeStruct) / sizeof(modeStruct[0]))*.25)-1)
@@ -1536,7 +1536,7 @@ void resetVariables(int modeIndex) {
 		    break;
 		case TEXTSPIN:
             sprintf(message, textInputString);
-            pos = map(strlen(message), 1, 63, -(SIDE*.9), 0);
+            pos = map(strlen(message), 1, 63, -(SIDE*.98), 0);
             transitionAll(black,LINEAR);	//fadeToBlack();
             if(!switch2)
                 transitionAll(getColorFromInteger(color2), LINEAR);
@@ -1572,7 +1572,7 @@ void resetVariables(int modeIndex) {
                     pos = map(strlen(message), 1, 63, -(SIDE*.5), 0);
                     break;
                 case 2:
-                    pos = map(strlen(message), 1, 63, -(SIDE*.9), 0);
+                    pos = map(strlen(message), 1, 63, -(SIDE*.98), 0);
                     break;
             }
             transitionAll(black,LINEAR);
