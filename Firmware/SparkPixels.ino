@@ -1,24 +1,32 @@
 /**
  ******************************************************************************
+ * @extended SparkPixels.ino:
+ *		New mode: CLOCK
+ *		New Functions: showClock, textClock, 
+ *		threeDClock (based on Dennis Williamson's "Clock" viz: http://cubetube.org/gallery/newestFirst/258/)
+ * @author   Werner Moecke
+ * @version  V3.3
+ * @date     15-March-2016
+ *
  * @fixed SparkPixels.ino:
- * 	Renamed IFTTT WEATHER to IFTTT
- * 	 The new IFTTT input MUST be: M:IFTTT,C6:xxxxxx,
- * 	Added text capability to iftttWeather()
- * 	 The new IFTTT input CAN be: M:IFTTT,C6:xxxxxx,W:<string>,
- *	Fixed a few bugs and glitches
+ *		Renamed IFTTT WEATHER to IFTTT
+ *			The new IFTTT input MUST be: M:IFTTT,C6:xxxxxx,
+ *		Added text capability to iftttWeather()
+ *			The new IFTTT input CAN be: M:IFTTT,C6:xxxxxx,W:<string>,
+ *      Fixed a few bugs and glitches
  * @author   Werner Moecke
  * @version  V3.2
  * @date     13-March-2016 ~ 14-March-2016
  *
  * @fixed SparkPixels.ino:
- * 	Added color picker and switch to pulse_oneColorAll();
- * 	Replaced the original IFTTT WEATHER code with call to pulse_oneColorAll()
+ *      Added color picker and switch to pulse_oneColorAll();
+ *      Replaced the original IFTTT WEATHER code with call to pulse_oneColorAll()
  * @author   Werner Moecke
  * @version  V3.1
  * @date     12-March-2016
  *
  * @fixed SparkPixels.ino:
- * 	Fixed issue with CUBE CLASSICS mode breaking the loop to runMode() after exit;
+ *      Fixed issue with CUBE CLASSICS mode breaking the loop to runMode() after exit;
  *      Also removed unnecessary calls to transitionAll() within runCubeClassics() and iftttWeather().
  * @author   Werner Moecke, Kevin Carlborg
  * @version  RC V3.0
@@ -212,6 +220,7 @@ const int CUBE_PAINTER                = 35; //credit: Werner Moecke (based on id
 const int CUBE_CLASSICS               = 36; //credit: http://www.instructables.com/id/Led-Cube-8x8x8/, Kevin Carlborg (L3D Cube port)
 const int IFTTTWEATHER                = 37; //credit: Kevin Carlborg, Werner Moecke (code improvements)
 const int DIGI                        = 38; //credit: Kevin Carlborg
+const int CLOCK                       = 39; //credit: Werner Moecke (based on Dennis Williamson's "Clock" viz: http://cubetube.org/gallery/newestFirst/258/)
 
 /* ======================= ADD NEW AUX SWITCH ID HERE. ======================= */
 // AUX SWITCH ID Defines
@@ -334,6 +343,7 @@ modeParams modeStruct[] =
   		{  CHEERLIGHTS,                 "CHEERLIGHTS",          0,          0,      FALSE   },  //credit: Alex Hornstein, Werner Moecke (stability fixes, extra transition effects)
         {  CHRISTMASLIGHTS,             "CHRISTMAS LIGHTS",     0,          0,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (L3D Cube port)
         {  CHRISTMASTREE,               "CHRISTMAS TREE",       0,          3,      FALSE   },  //credit: Kevin's friggin' xmas tree - there, have it!
+        {  CLOCK,                       "CLOCK",                1,          3,      FALSE   },  //credit: Werner Moecke (based on Dennis Williamson's "Clock" viz: http://cubetube.org/gallery/newestFirst/258/)
         {  COLLIDE,                     "COLLIDE",              0,          0,      FALSE   },  //credit: Kevin Carlborg
         {  COLORALL,                    "COLOR ALL",            1,          0,      FALSE   },  //credit: Kevin Carlborg
         {  CHRISTMASWREATH,             "COLOR WREATH",         2,          0,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (L3D Cube port, extra colors)
@@ -381,7 +391,8 @@ switchParams switchTitleStruct[] =
 	   {  ZONE,          "Loop",                "Random Colors",       "Coordinated Colors",  ""                     },
 	   {  DIGI,          "Random Color Fill",   "Fade In",             "",                    ""                     },
 	   {  CUBE_CLASSICS, "Color Sweep",         "",                    "",                    ""                     },
-	   {  COLORBREATHE,  "Random Colors",       "",                    "",                    ""                     }
+	   {  COLORBREATHE,  "Random Colors",       "",                    "",                    ""                     },
+	   {  CLOCK,         "3D Clock",            "Use 24h Format",      "Random Colors",       ""                     }
 };
 
 /* ======================= ADD NEW AUX SWITCH STRUCT HERE. ======================= 
@@ -396,7 +407,7 @@ auxSwitchParams auxSwitchStruct[] =
 { 
      /*    auxSwitchId      auxSwitchState  auxSwitchTitle         auxSwitchOnTitle       auxSwitchOffTitle    
      *     ---------------  --------------  ---------------------- ---------------------- ----------------------*/
-	    {  ASO,             TRUE,          "Auto Shut Off",       "ON",                  "OFF"                }, 
+	    {  ASO,             TRUE,          "Auto Shut Off",       "ON",                  "OFF"                } 
 	    //{  LIGHTSENSOR,     TRUE,           "Brightness Control",  "Light Sensor",        "App Controlled"     }, //Shown here as an example
 };
 
@@ -866,6 +877,104 @@ int requestTime, pollTime;
 /* ============================ IFTTT mode defines =========================== */
 int whichTextMode = 0;
 
+/* ============================ CLOCK mode defines =========================== */
+int hrow, hplane;
+int mrow, mplane;
+int srow, splane;
+int seconds, minutes, hours;
+Point s, m, h;
+Color bg;
+Color scolor, mcolor, hcolor;
+Color hdcolor, mdcolor, sdcolor;
+Color amcolor, pmcolor;
+byte currentBg, nextBg;
+
+static const bool ampm[2][3][2] = {
+    {	// "A":
+        {1, 1},
+        {1, 1},
+        {1, 1}
+    },
+    {	// "P":
+        {1, 1},
+        {1, 1},
+        {1, 0}
+    }
+};
+
+static const bool digits[10][5][3] = {
+    {	// "0":
+        {1, 1, 1},
+        {1, 0, 1},
+        {1, 0, 1},
+        {1, 0, 1},
+        {1, 1, 1}
+    },
+    {	// "1":
+        {0, 1, 0},
+        {1, 1, 0},
+        {0, 1, 0},
+        {0, 1, 0},
+        {1, 1, 1}
+    },
+    {	// "2":
+        {1, 1, 0},
+        {0, 0, 1},
+        {0, 1, 1},
+        {1, 0, 0},
+        {1, 1, 1}
+    },
+    {	// "3":
+        {1, 1, 0},
+        {0, 0, 1},
+        {1, 1, 0},
+        {0, 0, 1},
+        {1, 1, 0}
+    },
+    {	// "4":
+        {1, 0, 1},
+        {1, 0, 1},
+        {1, 1, 1},
+        {0, 0, 1},
+        {0, 0, 1}
+    },
+    {	// "5":
+        {1, 1, 1},
+        {1, 0, 0},
+        {1, 1, 1},
+        {0, 0, 1},
+        {1, 1, 0}
+    },
+    {	// "6":
+        {0, 1, 1},
+        {1, 0, 0},
+        {1, 1, 1},
+        {1, 0, 1},
+        {1, 1, 1}
+    },
+    {	// "7":
+        {1, 1, 1},
+        {0, 0, 1},
+        {0, 1, 0},
+        {0, 1, 0},
+        {0, 1, 0}
+    },
+    {	// "8":
+        {1, 1, 1},
+        {1, 0, 1},
+        {1, 1, 1},
+        {1, 0, 1},
+        {1, 1, 1}
+    },
+    {	// "9":
+        {1, 1, 1},
+        {1, 0, 1},
+        {1, 1, 1},
+        {0, 0, 1},
+        {1, 1, 0}
+    }
+};
+
 
 /* ============================ Required Prototypes ============================= */
 int showPixels(void);
@@ -964,11 +1073,14 @@ void runDemo(void);
 void zPlasma(void);
 void squarral(void);
 void warmFade(void);
+void textClock(void);
 void whirlWind(void);
 void cycleLerp(void);
+void showClock(void);
 void color_fade(void);
 void colorPulse(void);
 void modeButton(void);
+void threeDClock(void);
 void cheerlights(void);
 void smoothSwitch(void);
 void colorStripes(void);
@@ -999,6 +1111,7 @@ void twoColorChaser(uint32_t color1, uint32_t color2);
 void christmasWreath(uint32_t color1, uint32_t color2);
 void cubeGreeting(int textMode, int frameCount, float pos);
 void cubes(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4);
+void display_digits(int number, int drow, int dplane, Color numcolor);
 void colorZoneChaser(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4);
 short FFT(short int dir,int m,float *x,float *y);
 
@@ -1208,7 +1321,7 @@ void makeAuxSwitchList(void) {
 		
 		//Update local Aux Switch variables
 		if(0 == updateAuxSwitches(auxSwitchStruct[i].auxSwitchId))
-		    sprintf(debug,"Error: auxSwitch failed to update local variable");
+		    sprintf(debug,"Error: auxSwitch %i failed to update local variable: autoShutOff = %i", auxSwitchStruct[i].auxSwitchId, autoShutOff);
     }
 }
 
@@ -1220,6 +1333,7 @@ void makeAuxSwitchList(void) {
 int updateAuxSwitches(int id) {
     switch(id) {
         case ASO:
+            sprintf(debug,"autoShutOff = %i", auxSwitchStruct[getAuxSwitchIndexFromID(id)].auxSwitchState);
             return autoShutOff = auxSwitchStruct[getAuxSwitchIndexFromID(id)].auxSwitchState;
     }
     return -1;
@@ -1376,6 +1490,9 @@ void runMode() {
 		case CHRISTMASWREATH:
 		    christmasWreath(color1, color2);
 		    break;
+		case CLOCK:
+		    showClock();
+		    break;
 		case COLLIDE:
 		    collide();
 		    break;
@@ -1481,6 +1598,65 @@ void runMode() {
 
 void resetVariables(int modeIndex) {
     switch (modeIndex) {
+		case CLOCK:
+            hours = 0;
+		    minutes = 0;
+		    seconds = 0;
+            h = Point(0, 0, 0);
+		    m = Point(0, 0, 0);
+		    s = Point(0, 0, 0);
+            hcolor = black;
+		    mcolor = black;
+		    scolor = black;
+            // digit positions
+        	// set plane to display time elements
+        	h.z = SIDE - 1;
+        	m.z = SIDE - 4;
+        	s.z = SIDE - 7;
+            hrow = 2;
+            mrow = 0;
+            srow = 3;
+            hplane = 6;
+            mplane = 3;
+            splane = 0;
+            // digit colors
+            hdcolor = black;
+            mdcolor = black;
+            sdcolor = black;
+            amcolor = orange; // dim orange
+            pmcolor = teal;   // dim purple
+          	//adjust color intensity (dim by percent)
+          	amcolor = fadeColor(amcolor, 0.6);  //adjustGamma(amcolor, 0.6);
+          	pmcolor = fadeColor(pmcolor, 0.6);  //adjustGamma(pmcolor, 0.6);
+            nextBg = 0;
+            currentBg = 0;
+            switch(whichTextMode) {
+                case 0:
+                case 1:
+                    pos = map(strlen(message), 1, 63, -(SIDE*.5), 0);
+                    break;
+                case 2:
+                    pos = map(strlen(message), 1, 63, -(SIDE*.98), 0);
+                    break;
+            }
+            whichTextMode++;
+            if(whichTextMode > 2) {whichTextMode = 0;}
+            transitionAll(black,LINEAR);
+		    break;
+		case IFTTTWEATHER:
+		{
+            switch(whichTextMode) {
+                case 0:
+                case 1:
+                    pos = map(strlen(message), 1, 63, -(SIDE*.5), 0);
+                    break;
+                case 2:
+                    pos = map(strlen(message), 1, 63, -(SIDE*.98), 0);
+                    break;
+            }
+            transitionAll(black,LINEAR);
+		    break;
+		}   
 		case CHEERLIGHTS:
 		    hostname = "api.thingspeak.com";
 		    path = "/channels/1417/field/2/last.txt";
@@ -1564,20 +1740,6 @@ void resetVariables(int modeIndex) {
 		    break;
      	case COLORALL:
 		    break;
-		case IFTTTWEATHER:
-		{
-            switch(whichTextMode) {
-                case 0:
-                case 1:
-                    pos = map(strlen(message), 1, 63, -(SIDE*.5), 0);
-                    break;
-                case 2:
-                    pos = map(strlen(message), 1, 63, -(SIDE*.98), 0);
-                    break;
-            }
-            transitionAll(black,LINEAR);
-		    break;
-		}   
 		case DIGI:
 		case CUBE_PAINTER:
      	case COLORBREATHE:
@@ -1821,6 +1983,185 @@ int showPixels(void) {
     strip.show();
     Particle.process();    //process Spark events
 	return 1;
+}
+
+void showClock() {
+    run = TRUE;
+
+	if (switch2)    //use24hr
+    	hours = Time.hour();
+	else
+    	hours = Time.hourFormat12();
+	minutes = Time.minute();
+	seconds = Time.second();
+
+    if(switch1) 
+        threeDClock();
+    else
+        textClock();
+	
+	if(stop) {demo = FALSE; return;}
+    if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+}
+
+void textClock() {
+    bg = getColorFromInteger(color1);    
+    //static int frameCount = 0;
+    uint32_t col;
+    int hTenths = hours / 10;
+    int hUnits = hours % 10;
+    int mTenths = minutes / 10;
+    int mUnits = minutes % 10;
+    int sTenths = seconds / 10;
+    int sUnits = seconds % 10;
+    run = TRUE;
+    
+  	if (switch3) {  //BG
+      if (currentBg == nextBg)
+          nextBg = rand()%256;
+      else if (nextBg > currentBg)
+          currentBg++;
+      else
+          currentBg--;
+
+      bg = getColorFromInteger(Wheel(currentBg));
+    }
+    //col = switch3 ? Wheel(frameCount%500) : color1;
+    background(getColorFromInteger(0));
+    
+    //(largest_item - smallest_item) maps to (max-min)
+    float ratio = (.5 - .05)/((120*.05) - .05);
+    //(min + ratio*(value-smallest_item))
+    float speedFactor = .05 + ratio * ((map(speed, 1, 120, 120, 1) * .05) - .05);
+    pos += speedFactor;
+
+    sprintf(message, "%i%i:%i%i:%i%i%s", hTenths, hUnits, mTenths, mUnits, sTenths, sUnits, switch2 ? "" : Time.isAM() ? "AM" : "PM");
+    switch(whichTextMode) {
+        case 0:
+        {
+            //Can't call textSpin(col, 0) wrapper directly, due to conflicts with switches 2 and 3
+            scrollSpinningText(message, Point(pos - strlen(message), 0, ceil((SIDE-1)*.5)), bg);
+            showPixels();
+        	if(stop) {demo = FALSE; return;}
+            if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+            if (pos >= (SIDE*map(strlen(message), 1, 63, 1, SIDE))+(strlen(message))*8)
+                pos = map(strlen(message), 1, 63, -SIDE, 0);
+            break;
+        }
+        case 1:
+        {
+            //Can't call textMarquee(col, 0) wrapper directly, due to conflicts with switches 2 and 3
+            marquee(message, pos, bg);
+            showPixels();
+        	if(stop) {demo = FALSE; return;}
+            if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+            if (pos >= (SIDE*map(strlen(message), 1, 63, 4, SIDE))+(strlen(message))*8)
+                pos = map(strlen(message), 1, 63, -(SIDE*.5), 0);
+            break;
+        }
+        case 2:
+        {
+            //Can't call textScroll(col, 0) wrapper directly, due to conflicts with switches 2 and 3
+            scrollText(message, Point(pos - strlen(message), 0, 6), bg);
+            showPixels();
+        	if(stop) {demo = FALSE; return;}
+            if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+            if (pos >= (SIDE*map(strlen(message), 1, 63, 1, SIDE))+(strlen(message))*8)
+                pos = map(strlen(message), 1, 63, -(SIDE*.5), 0);
+            break;
+        }
+    }    
+    //frameCount++;
+    //if(frameCount > 10000) {frameCount = 0;}
+}
+
+/** Based on Dennis Williamson's "Clock" viz:
+ *  http://cubetube.org/gallery/newestFirst/258/
+**/
+void threeDClock() {
+	bg = fadeColor(getColorFromInteger(color1), 0.04);    //adjustGamma(Color(70, 70, 70), 0.5);
+    run = TRUE;
+  	
+  	if (switch3) {  //BG
+      if (currentBg == nextBg)
+          nextBg = rand()%256;
+      else if (nextBg > currentBg)
+          currentBg++;
+      else
+          currentBg--;
+
+      bg = getColorFromInteger(Wheel(currentBg, 0.04));
+    }
+  	background(bg);
+  	sprintf(debug, "bg = %i", strip.Color(bg.red, bg.green, bg.blue));
+
+	if (!switch2) { //!use24hr
+		if (Time.isAM()) {
+          for (int row = 0; row < 3; row++)
+			for (int col = 0; col < 2; col++)
+              if (ampm[0][row][col])
+                setPixelColor(col, SIDE - (row + 1), SIDE - 1, amcolor);    //setVoxel(col, SIDE - (row + 1), SIDE - 1, amcolor);
+        }
+    	else {
+          for (int row = 0; row < 3; row++)
+			for (int col = 0; col < 2; col++)
+              if (ampm[1][row][col])
+                setPixelColor(col, SIDE - (row + 1), SIDE - 1, pmcolor);    //setVoxel(col, SIDE - (row + 1), SIDE - 1, pmcolor);
+        }
+    }
+
+	s.x = seconds % SIDE;
+	s.y = seconds / SIDE;
+
+	m.x = minutes % SIDE;
+	m.y = minutes / SIDE;
+
+	h.x = hours % SIDE;
+	h.y = hours / SIDE;
+
+	setPixelColor(h, hcolor); //setVoxel(h, hcolor);
+	setPixelColor(m, mcolor); //setVoxel(m, mcolor);
+	setPixelColor(s, scolor); //setVoxel(s, scolor);
+	
+  	//this sets the color tones and the ranges for
+  	//varying each color; if you don't like going too
+  	//wild, you can try narrowing the ranges to create
+  	//more subtle tones to match your taste...  ;-P
+	hdcolor=getColorFromInteger(Wheel(map(hours, (switch2 ? 0 : 1), (switch2 ? 23 : 12), 0, 255), 0.6));
+	mdcolor=getColorFromInteger(Wheel(map(minutes, 0, 59, 0, 255), 0.7));
+    sdcolor=getColorFromInteger(Wheel(map(seconds, 0, 59, 0, 255), 0.8));
+  	//adjust color intensity (dim by percent)
+  	hcolor = fadeColor(hdcolor, 0.6); //adjustGamma(hdcolor, 0.6);
+  	mcolor = fadeColor(mdcolor, 0.6); //adjustGamma(mdcolor, 0.6);
+  	scolor = fadeColor(sdcolor, 0.6); //adjustGamma(sdcolor, 0.6);
+
+  	display_digits(hours, hrow, hplane, hdcolor);
+	display_digits(minutes, mrow, mplane, mdcolor);
+	display_digits(seconds, srow, splane, sdcolor);
+
+	//checkFlipState();
+	showPixels();
+	if(stop) {demo = FALSE; return;}
+    if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+  	delay(125);	// Sets the update rate for the background color
+}
+
+void display_digits(int number, int drow, int dplane, Color numcolor) {
+	int indiv[2];
+    run = TRUE;
+
+    indiv[0] = number / 10;
+    indiv[1] = number % 10;
+
+	int dcol = 0;
+
+	for (int d = 0; d <= 1; d++){
+        for (int row = 0; row < 5; row++)
+            for (int col = 0; col < 3; col++)
+                if (digits[indiv[d]][row][col])
+                    setPixelColor(dcol + col, SIDE - row - drow - 1, dplane, numcolor); //setVoxel(dcol + col, SIDE - row - drow - 1, dplane, numcolor);
+    	dcol = 5;
+	}
 }
 
 /** Allow ifttt.com to trigger this mode based off of a weather recipe. 
