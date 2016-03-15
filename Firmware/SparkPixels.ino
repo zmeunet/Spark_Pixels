@@ -2041,9 +2041,6 @@ void textClock() {
         {
             //Can't call textSpin(col, 0) wrapper directly, due to conflicts with switches 2 and 3
             scrollSpinningText(message, Point(pos - strlen(message), 0, ceil((SIDE-1)*.5)), bg);
-            showPixels();
-        	if(stop) {demo = FALSE; return;}
-            if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
             if (pos >= (SIDE*map(strlen(message), 1, 63, 1, SIDE))+(strlen(message))*8)
                 pos = map(strlen(message), 1, 63, -SIDE, 0);
             break;
@@ -2052,9 +2049,6 @@ void textClock() {
         {
             //Can't call textMarquee(col, 0) wrapper directly, due to conflicts with switches 2 and 3
             marquee(message, pos, bg);
-            showPixels();
-        	if(stop) {demo = FALSE; return;}
-            if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
             if (pos >= (SIDE*map(strlen(message), 1, 63, 4, SIDE))+(strlen(message))*8)
                 pos = map(strlen(message), 1, 63, -(SIDE*.5), 0);
             break;
@@ -2063,14 +2057,14 @@ void textClock() {
         {
             //Can't call textScroll(col, 0) wrapper directly, due to conflicts with switches 2 and 3
             scrollText(message, Point(pos - strlen(message), 0, 6), bg);
-            showPixels();
-        	if(stop) {demo = FALSE; return;}
-            if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
             if (pos >= (SIDE*map(strlen(message), 1, 63, 1, SIDE))+(strlen(message))*8)
                 pos = map(strlen(message), 1, 63, -(SIDE*.5), 0);
             break;
         }
     }    
+    showPixels();
+	if(stop) {demo = FALSE; return;}
+    if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
     //frameCount++;
     //if(frameCount > 10000) {frameCount = 0;}
 }
