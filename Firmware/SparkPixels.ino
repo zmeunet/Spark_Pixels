@@ -5,7 +5,8 @@
  *      TEXT MARQUEE/TEXT SCROLL/TEXT SPIN modes replaced by TEXT mode
  *      (tap the mode name to switch between effects)
  * @fixed SparkPixels.ino:
- *		Fixed an issue where the text color would switch to black due to a conflict with switches 2/3
+ *		Fixed an issue where the text color would switch to black in IFTTT mode,
+ *		due to a conflict with switches 2/3
  * @author   Werner Moecke
  * @version  V3.4
  * @date     15-March-2016 ~ 16-March-2016
