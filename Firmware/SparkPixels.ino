@@ -1,6 +1,16 @@
 /**
  ******************************************************************************
  * @extended SparkPixels.ino:
+ *		CLOCK mode now can sweep the background color, or just not have any (black)
+ *      TEXT MARQUEE/TEXT SCROLL/TEXT SPIN modes replaced by TEXT mode
+ *      (tap the mode name to switch between effects)
+ * @fixed SparkPixels.ino:
+ *		Fixed an issue where the text color would switch to black due to a conflict with switches 2/3
+ * @author   Werner Moecke
+ * @version  V3.4
+ * @date     15-March-2016 ~ 16-March-2016
+ *
+ * @extended SparkPixels.ino:
  *		New mode: CLOCK
  *		New Functions: showClock, textClock, 
  *		threeDClock (based on Dennis Williamson's "Clock" viz: http://cubetube.org/gallery/newestFirst/258/)
@@ -208,19 +218,17 @@ const int WARMFADE                    = 23; //credit: Kevin Carlborg
 const int CHRISTMASTREE               = 24; //credit: Kevin's friggin' xmas tree - there, have it!
 const int CHRISTMASLIGHTS             = 25; //credit: Kevin Carlborg, Werner Moecke (L3D Cube port)
 const int CHRISTMASWREATH             = 26; //credit: Kevin Carlborg, Werner Moecke (L3D Cube port, extra colors)
-const int TEXTSCROLL                  = 27; //credit: Alex Hornstein, Hans-Peter "Hape", Werner Moecke (C++ port, extra settings)
-const int TEXTSPIN                    = 28; //credit: Alex Hornstein, Hans-Peter "Hape", Werner Moecke (C++ port, extra settings)
-const int TEXTMARQUEE                 = 29; //credit: Alex Hornstein, Hans-Peter "Hape", Werner Moecke (C++ port, extra settings)
-const int WHIRLWIND                   = 30; //credit: Bill Marrs
-const int CUBES                       = 31; //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
-const int RAIN                        = 32; //credit: Kevin Carlborg, Werner Moecke (Matrix Mode)
-const int CHEERLIGHTS                 = 33; //credit: Alex Hornstein, Werner Moecke (stability fixes, extra transition effects)
-const int FILLER                      = 34; //credit: Werner Moecke (based on idea by Alex Hornstein)
-const int CUBE_PAINTER                = 35; //credit: Werner Moecke (based on idea by Alex Hornstein)
-const int CUBE_CLASSICS               = 36; //credit: http://www.instructables.com/id/Led-Cube-8x8x8/, Kevin Carlborg (L3D Cube port)
-const int IFTTTWEATHER                = 37; //credit: Kevin Carlborg, Werner Moecke (code improvements)
-const int DIGI                        = 38; //credit: Kevin Carlborg
-const int CLOCK                       = 39; //credit: Werner Moecke (based on Dennis Williamson's "Clock" viz: http://cubetube.org/gallery/newestFirst/258/)
+const int TEXT                        = 27; //credit: Alex Hornstein, Hans-Peter "Hape", Werner Moecke (C++ port, extra settings)
+const int WHIRLWIND                   = 28; //credit: Bill Marrs
+const int CUBES                       = 29; //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
+const int RAIN                        = 30; //credit: Kevin Carlborg, Werner Moecke (Matrix Mode)
+const int CHEERLIGHTS                 = 31; //credit: Alex Hornstein, Werner Moecke (stability fixes, extra transition effects)
+const int FILLER                      = 32; //credit: Werner Moecke (based on idea by Alex Hornstein)
+const int CUBE_PAINTER                = 33; //credit: Werner Moecke (based on idea by Alex Hornstein)
+const int CUBE_CLASSICS               = 34; //credit: http://www.instructables.com/id/Led-Cube-8x8x8/, Kevin Carlborg (L3D Cube port)
+const int IFTTTWEATHER                = 35; //credit: Kevin Carlborg, Werner Moecke (code improvements)
+const int DIGI                        = 36; //credit: Kevin Carlborg
+const int CLOCK                       = 37; //credit: Werner Moecke (based on Dennis Williamson's "Clock" viz: http://cubetube.org/gallery/newestFirst/258/)
 
 /* ======================= ADD NEW AUX SWITCH ID HERE. ======================= */
 // AUX SWITCH ID Defines
@@ -343,7 +351,7 @@ modeParams modeStruct[] =
   		{  CHEERLIGHTS,                 "CHEERLIGHTS",          0,          0,      FALSE   },  //credit: Alex Hornstein, Werner Moecke (stability fixes, extra transition effects)
         {  CHRISTMASLIGHTS,             "CHRISTMAS LIGHTS",     0,          0,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (L3D Cube port)
         {  CHRISTMASTREE,               "CHRISTMAS TREE",       0,          3,      FALSE   },  //credit: Kevin's friggin' xmas tree - there, have it!
-        {  CLOCK,                       "CLOCK",                1,          3,      FALSE   },  //credit: Werner Moecke (based on Dennis Williamson's "Clock" viz: http://cubetube.org/gallery/newestFirst/258/)
+        {  CLOCK,                       "CLOCK",                1,          4,      FALSE   },  //credit: Werner Moecke (based on Dennis Williamson's "Clock" viz: http://cubetube.org/gallery/newestFirst/258/)
         {  COLLIDE,                     "COLLIDE",              0,          0,      FALSE   },  //credit: Kevin Carlborg
         {  COLORALL,                    "COLOR ALL",            1,          0,      FALSE   },  //credit: Kevin Carlborg
         {  CHRISTMASWREATH,             "COLOR WREATH",         2,          0,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (L3D Cube port, extra colors)
@@ -365,9 +373,7 @@ modeParams modeStruct[] =
         {  SQUARRAL,                    "SQUARRAL",             0,          0,      FALSE   },  //credit: Alex Hornstein
         {  SPECTRUM,                    "SPECTRUM",	            0,          2,      FALSE   },  //credit: Alex Hornstein, Werner Moecke (extra settings)
         {  COLORSTRIPES,                "STRIPES",              0,          0,      FALSE   },  //credit: Werner Moecke
-        {  TEXTMARQUEE,                 "TEXT MARQUEE",	        2,          3,      TRUE    },  //credit: Alex Hornstein, Hans-Peter "Hape", Werner Moecke (C++ port, extra settings)
-        {  TEXTSCROLL,                  "TEXT SCROLL",	        2,          3,      TRUE    },  //credit: Alex Hornstein, Hans-Peter "Hape", Werner Moecke (C++ port, extra settings)
-        {  TEXTSPIN,                    "TEXT SPIN",            2,          3,      TRUE    },  //credit: Alex Hornstein, Hans-Peter "Hape", Werner Moecke (C++ port, extra settings)
+        {  TEXT,                        "TEXT",                 2,          3,      TRUE    },  //credit: Alex Hornstein, Hans-Peter "Hape", Werner Moecke (C++ port, extra settings)
         {  THEATERCHASE,                "THEATER CHASE",        0,          0,      FALSE   },  //credit: Kevin Carlborg
         {  COLORFADE,                   "TRANSITION",           0,          0,      FALSE   },  //credit: Werner Moecke
         {  WARMFADE,                    "WARM FADE",            0,          0,      FALSE   },  //credit: Kevin Carlborg
@@ -381,18 +387,16 @@ switchParams switchTitleStruct[] =
     /*  modeId           S1Title                S2Title                S3Title                S4Title 
      *  ---------------  ---------------------- ---------------------- ---------------------- ----------------------  */
 	   {  SPECTRUM,      "Smooth",              "Peak Mode",           "",                    ""                     },
-	   {  TEXTMARQUEE,   "Bold Text",           "No Background",       "Black Text",          ""                     },
-	   {  TEXTSPIN,      "Bold Text",           "No Background",       "Black Text",          ""                     },
-	   {  TEXTSCROLL,    "Bold Text",           "No Background",       "Black Text",          ""                     },
+	   {  TEXT,          "Bold Text",           "No Background",       "Black Text",          ""                     },
 	   {  CHRISTMASTREE, "Make it Snow",        "Pulse the Star",      "Lights On",           ""                     },
-	   {  CUBES,         "Fill Cubes",          "Random Colors",       "Bleed Edge Color",    "Bleed Main Color"     },
+	   {  CUBES,         "Fill Cubes",          "Random Colors",       "Bleed Edges",         "Bleed Sides"          },
 	   {  RAIN,          "Random Colors",       "Matrix Mode",         "Fade Bottom",         ""                     },
 	   {  FILLER,        "Random Colors",       "",                    "",                    ""                     },
-	   {  ZONE,          "Loop",                "Random Colors",       "Coordinated Colors",  ""                     },
-	   {  DIGI,          "Random Color Fill",   "Fade In",             "",                    ""                     },
+	   {  ZONE,          "Loop",                "Random Colors",       "Coord. Colors",       ""                     },
+	   {  DIGI,          "Random Colors",       "Fade In",             "",                    ""                     },
 	   {  CUBE_CLASSICS, "Color Sweep",         "",                    "",                    ""                     },
 	   {  COLORBREATHE,  "Random Colors",       "",                    "",                    ""                     },
-	   {  CLOCK,         "3D Clock",            "Use 24h Format",      "Random Colors",       ""                     }
+	   {  CLOCK,         "3D Clock",            "24h Format",          "Color Sweep",         "No Background"        }
 };
 
 /* ======================= ADD NEW AUX SWITCH STRUCT HERE. ======================= 
@@ -535,6 +539,7 @@ float maxVal=8;
 /* ========================= Text Defines / Prototypes ========================= */
 char message[64]=" ";
 int thickness=0;
+int whichTextMode = 0;
 float pos=0;
 void showChar(char a, Point p, Color col);
 void marquee(String text, float pos, Color col);
@@ -874,10 +879,8 @@ int requestTime, pollTime;
 //Thread* cheerlightsThread;  //https://community.particle.io/t/particle-photon-multi-blink-sample-using-threads/16214/3
 //https://github.com/pipprojects/WM/blob/master/water-meter-2.ino
 
-/* ============================ IFTTT mode defines =========================== */
-int whichTextMode = 0;
-
 /* ============================ CLOCK mode defines =========================== */
+char clockMessage[10]=" ";
 int hrow, hplane;
 int mrow, mplane;
 int srow, splane;
@@ -1100,6 +1103,7 @@ void setplane_x (int x, Color col);
 void setplane_y (int y, Color col);
 void setplane_z (int z, Color col);
 void pulse_oneColorAll(uint32_t color1);
+void showText(uint32_t color1, uint32_t color2);
 void textSpin(uint32_t color1, uint32_t color2);
 void textScroll(uint32_t color1, uint32_t color2);
 void findRandomSnowFlakesPositions(int numFlakes);
@@ -1415,9 +1419,7 @@ void runDemo() {
                (currentModeID == getModeIndexFromID(NORMAL))       || 
                (currentModeID == getModeIndexFromID(STANDBY))      || 
                (currentModeID == getModeIndexFromID(COLORALL))     ||
-               (currentModeID == getModeIndexFromID(TEXTSPIN))     || 
-               (currentModeID == getModeIndexFromID(TEXTSCROLL))   || 
-               (currentModeID == getModeIndexFromID(TEXTMARQUEE))  || 
+               (currentModeID == getModeIndexFromID(TEXT))         || 
                (currentModeID == getModeIndexFromID(CHEERLIGHTS))  || 
                (currentModeID == getModeIndexFromID(CUBE_PAINTER)) ||
                (currentModeID == getModeIndexFromID(IFTTTWEATHER)) ||
@@ -1561,15 +1563,9 @@ void runMode() {
 		case SQUARRAL:
 		    squarral();
 		    break;
-     	case TEXTMARQUEE:
-		    textMarquee(color1, color2);
-			break;
-     	case TEXTSCROLL:
-		    textScroll(color1, color2);
-			break;
-     	case TEXTSPIN:
-		    textSpin(color1, color2);
-			break;
+		case TEXT:
+		    showText(color1, color2);
+		    break;
 		case THEATERCHASE:
 		    theaterChaseRainbow();
 		    break;
@@ -1599,37 +1595,27 @@ void runMode() {
 void resetVariables(int modeIndex) {
     switch (modeIndex) {
 		case CLOCK:
-            hours = 0;
-		    minutes = 0;
-		    seconds = 0;
-            h = Point(0, 0, 0);
-		    m = Point(0, 0, 0);
-		    s = Point(0, 0, 0);
-            hcolor = black;
-		    mcolor = black;
-		    scolor = black;
+            hours = minutes = seconds = 0;
+            h = m = s = Point(0, 0, 0);
+            hcolor = mcolor = scolor = black;
+            // digit colors
+            hdcolor = mdcolor = sdcolor = black;
             // digit positions
-        	// set plane to display time elements
         	h.z = SIDE - 1;
         	m.z = SIDE - 4;
         	s.z = SIDE - 7;
             hrow = 2;
             mrow = 0;
             srow = 3;
+        	// set plane to display time elements
             hplane = 6;
             mplane = 3;
             splane = 0;
-            // digit colors
-            hdcolor = black;
-            mdcolor = black;
-            sdcolor = black;
-            amcolor = orange; // dim orange
-            pmcolor = teal;   // dim purple
           	//adjust color intensity (dim by percent)
-          	amcolor = fadeColor(amcolor, 0.6);  //adjustGamma(amcolor, 0.6);
-          	pmcolor = fadeColor(pmcolor, 0.6);  //adjustGamma(pmcolor, 0.6);
-            nextBg = 0;
-            currentBg = 0;
+          	amcolor = fadeColor(orange, 0.6);   //dim orange;
+          	pmcolor = fadeColor(teal, 0.6);     //dim teal;
+            nextBg = currentBg = 0;
+            thickness = 1;
             switch(whichTextMode) {
                 case 0:
                 case 1:
@@ -1645,6 +1631,9 @@ void resetVariables(int modeIndex) {
 		    break;
 		case IFTTTWEATHER:
 		{
+            lastSwitchState[0] = switch1;
+            lastSwitchState[1] = switch2;
+            lastSwitchState[2] = switch3;
             switch(whichTextMode) {
                 case 0:
                 case 1:
@@ -1702,21 +1691,24 @@ void resetVariables(int modeIndex) {
             idex = 0;
             ihue = 0;
 		    break;
-		case TEXTMARQUEE:
-		case TEXTSCROLL:
+		case TEXT:
+		{
             sprintf(message, textInputString);
-            pos = map(strlen(message), 1, 63, -(SIDE*.5), 0); 
-            transitionAll(black,LINEAR);	//fadeToBlack();
-            if(!switch2)
-                transitionAll(getColorFromInteger(color2), LINEAR);
+            switch(whichTextMode) {
+                case 0:
+                    pos = map(strlen(message), 1, 63, -(SIDE*.98), 0);
+                    break;
+                case 1:
+                case 2:
+                    pos = map(strlen(message), 1, 63, -(SIDE*.5), 0);
+                    break;
+            }
+            whichTextMode++;
+            if(whichTextMode > 2) {whichTextMode = 0;}
+            Color bg = switch2 ? black : getColorFromInteger(color2);
+            transitionAll(bg,LINEAR);
 		    break;
-		case TEXTSPIN:
-            sprintf(message, textInputString);
-            pos = map(strlen(message), 1, 63, -(SIDE*.98), 0);
-            transitionAll(black,LINEAR);	//fadeToBlack();
-            if(!switch2)
-                transitionAll(getColorFromInteger(color2), LINEAR);
-		    break;
+		}
 		case SQUARRAL:
             frame = 0;
             bound = 0;
@@ -2027,38 +2019,41 @@ void textClock() {
       bg = getColorFromInteger(Wheel(currentBg));
     }
     //col = switch3 ? Wheel(frameCount%500) : color1;
-    background(getColorFromInteger(0));
-    
+    if(switch4)
+        background(black);
+    else
+        background(fadeColor(complement(bg), 0.25));
+
     //(largest_item - smallest_item) maps to (max-min)
     float ratio = (.5 - .05)/((120*.05) - .05);
     //(min + ratio*(value-smallest_item))
     float speedFactor = .05 + ratio * ((map(speed, 1, 120, 120, 1) * .05) - .05);
     pos += speedFactor;
 
-    sprintf(message, "%i%i:%i%i:%i%i%s", hTenths, hUnits, mTenths, mUnits, sTenths, sUnits, switch2 ? "" : Time.isAM() ? "AM" : "PM");
+    sprintf(clockMessage, "%i%i:%i%i:%i%i%s", hTenths, hUnits, mTenths, mUnits, sTenths, sUnits, switch2 ? "" : Time.isAM() ? "AM" : "PM");
     switch(whichTextMode) {
         case 0:
         {
             //Can't call textSpin(col, 0) wrapper directly, due to conflicts with switches 2 and 3
-            scrollSpinningText(message, Point(pos - strlen(message), 0, ceil((SIDE-1)*.5)), bg);
-            if (pos >= (SIDE*map(strlen(message), 1, 63, 1, SIDE))+(strlen(message))*8)
-                pos = map(strlen(message), 1, 63, -SIDE, 0);
+            scrollSpinningText(clockMessage, Point(pos - strlen(clockMessage), 0, ceil((SIDE-1)*.5)), bg);
+            if (pos >= (SIDE*map(strlen(clockMessage), 1, 63, 1, SIDE))+(strlen(clockMessage))*8)
+                pos = map(strlen(clockMessage), 1, 63, -SIDE, 0);
             break;
         }
         case 1:
         {
             //Can't call textMarquee(col, 0) wrapper directly, due to conflicts with switches 2 and 3
-            marquee(message, pos, bg);
-            if (pos >= (SIDE*map(strlen(message), 1, 63, 4, SIDE))+(strlen(message))*8)
-                pos = map(strlen(message), 1, 63, -(SIDE*.5), 0);
+            marquee(clockMessage, pos, bg);
+            if (pos >= (SIDE*map(strlen(clockMessage), 1, 63, 4, SIDE))+(strlen(clockMessage))*8)
+                pos = map(strlen(clockMessage), 1, 63, -(SIDE*.5), 0);
             break;
         }
         case 2:
         {
             //Can't call textScroll(col, 0) wrapper directly, due to conflicts with switches 2 and 3
-            scrollText(message, Point(pos - strlen(message), 0, 6), bg);
-            if (pos >= (SIDE*map(strlen(message), 1, 63, 1, SIDE))+(strlen(message))*8)
-                pos = map(strlen(message), 1, 63, -(SIDE*.5), 0);
+            scrollText(clockMessage, Point(pos - strlen(clockMessage), 0, 6), bg);
+            if (pos >= (SIDE*map(strlen(clockMessage), 1, 63, 1, SIDE))+(strlen(clockMessage))*8)
+                pos = map(strlen(clockMessage), 1, 63, -(SIDE*.5), 0);
             break;
         }
     }    
@@ -2073,7 +2068,7 @@ void textClock() {
  *  http://cubetube.org/gallery/newestFirst/258/
 **/
 void threeDClock() {
-	bg = fadeColor(getColorFromInteger(color1), 0.04);    //adjustGamma(Color(70, 70, 70), 0.5);
+	bg = getColorFromInteger(color1);    //adjustGamma(Color(70, 70, 70), 0.5);
     run = TRUE;
   	
   	if (switch3) {  //BG
@@ -2084,10 +2079,13 @@ void threeDClock() {
       else
           currentBg--;
 
-      bg = getColorFromInteger(Wheel(currentBg, 0.04));
+      bg = getColorFromInteger(Wheel(currentBg));
     }
-  	background(bg);
-  	sprintf(debug, "bg = %i", strip.Color(bg.red, bg.green, bg.blue));
+    
+    if(switch4)
+        background(black);
+    else
+        background(fadeColor(bg, 0.08));
 
 	if (!switch2) { //!use24hr
 		if (Time.isAM()) {
@@ -2193,6 +2191,8 @@ void iftttWeather(uint32_t c) {
     if((millis() - lastCommandReceived) < calculatedInterval) {
         if(isNewText) {
             switch1 = TRUE;
+            switch2 = TRUE;
+            switch3 = FALSE;
             switch(whichTextMode) {
                 case 0:
                     textMarquee(c, 0);
@@ -2216,8 +2216,15 @@ void iftttWeather(uint32_t c) {
         isNewText = FALSE;
         brightness = lastBrightness;
         switch1 = lastSwitchState[0];
+        switch2 = lastSwitchState[1];
+        switch3 = lastSwitchState[2];
         currentModeID = lastModeID;
-        setNewMode(getModeIndexFromID(currentModeID));
+        if(currentModeID == getModeIndexFromID(IFTTTWEATHER))
+            setNewMode(getModeIndexFromID(STANDBY));
+        else
+            setNewMode(getModeIndexFromID(currentModeID));
+        //sprintf(debug, "currentModeID: %d", currentModeID);
+        transition(black, true);
     }
     run = true;
 }
@@ -6355,6 +6362,20 @@ short FFT(short int dir,int m,float *x,float *y) {
 }
 
 /* ============================== Text functions ============================== */
+void showText(uint32_t color1, uint32_t color2) {
+    switch(whichTextMode) {
+        case 0:
+            textSpin(color1, color2);
+            break;
+        case 1:
+            textMarquee(color1, color2);
+            break;
+        case 2:
+            textScroll(color1, color2);
+            break;
+    }
+}
+
 void textSpin(uint32_t color1, uint32_t color2) {
     run = TRUE;
     
@@ -6362,7 +6383,11 @@ void textSpin(uint32_t color1, uint32_t color2) {
     if(switch2) {color2 = 0;}
     if(switch3) {color1 = 0;}
     
-    background(getColorFromInteger(color2));
+    if(switch3)
+        background(fadeColor(getColorFromInteger(color2), 0.5));
+    else
+        background(fadeColor(getColorFromInteger(color2), 0.25));
+    
     scrollSpinningText(message, Point(pos - strlen(message), 0, ceil((SIDE-1)*.5)), getColorFromInteger(color1));
     showPixels();
     if(stop) {return;}
@@ -6382,7 +6407,11 @@ void textScroll(uint32_t color1, uint32_t color2) {
     if(switch2) {color2 = 0;}
     if(switch3) {color1 = 0;}
     
-    background(getColorFromInteger(color2));
+    if(switch3)
+        background(fadeColor(getColorFromInteger(color2), 0.5));
+    else
+        background(fadeColor(getColorFromInteger(color2), 0.25));
+    
     scrollText(message, Point(pos - strlen(message), 0, 6), getColorFromInteger(color1));
     showPixels();
     if(stop) {return;}
@@ -6402,7 +6431,11 @@ void textMarquee(uint32_t color1, uint32_t color2) {
     if(switch2) {color2 = 0;}
     if(switch3) {color1 = 0;}
     
-    background(getColorFromInteger(color2));
+    if(switch3)
+        background(fadeColor(getColorFromInteger(color2), 0.5));
+    else
+        background(fadeColor(getColorFromInteger(color2), 0.25));
+    
     marquee(message, pos, getColorFromInteger(color1));
     showPixels();
     if(stop) {return;}
