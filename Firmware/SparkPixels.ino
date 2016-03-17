@@ -1,7 +1,14 @@
 /**
  ******************************************************************************
+ * @fixed SparkPixels.ino:
+ *	The ugliest workaround ever coded, just to cope with some weird bug in the compiler,
+ *	that's causing the modeParamList to be cleared whenever switch3 or switch4 are set.
+ * @author   Werner Moecke
+ * @version  V3.5
+ * @date     16-March-2016 ~ 17-March-2016
+ *
  * @extended SparkPixels.ino:
- *		CLOCK mode now can sweep the background color, or just not have any (black)
+ *	CLOCK mode now can sweep the background color, or just not have any (black)
  *      TEXT MARQUEE/TEXT SCROLL/TEXT SPIN modes replaced by TEXT mode
  *      (tap the mode name to switch between effects)
  * @fixed SparkPixels.ino:
@@ -1136,14 +1143,10 @@ void setup() {
     run = TRUE;                     //was: FALSE;
     stop = FALSE;
     demo = TRUE;
-    switch1 = FALSE;
-    switch2 = FALSE;
-    switch3 = FALSE;
-    switch4 = FALSE;
-  	lastSwitchState[0] = switch1;
-  	lastSwitchState[1] = switch2;
-  	lastSwitchState[2] = switch3;
-  	lastSwitchState[3] = switch4;
+    switch1 = lastSwitchState[0] = FALSE;
+    switch2 = lastSwitchState[1] = FALSE;
+    switch3 = lastSwitchState[2] = FALSE;
+    switch4 = lastSwitchState[3] = FALSE;
     autoShutOff = FALSE;    //Initialize auto shut off mode variable
 	currentModeID = getModeIndexFromID(NORMAL);
 	defaultColor = strip.Color(incandescent.red, incandescent.green, incandescent.blue);
@@ -1197,7 +1200,7 @@ void publishCloudVariables() {
         varsRegistered &= Particle.variable("brightness",   brightness);
     	varsRegistered &= Particle.variable("modeList",		modeNameList);
         varsRegistered &= Particle.variable("modeParmList",	modeParamList);
-    	varsRegistered &= Particle.variable("auxSwtchList",  auxSwitchList);
+    	varsRegistered &= Particle.variable("auxSwtchList", auxSwitchList);
     	varsRegistered &= Particle.variable("mode",         currentModeName);
     }
 }
@@ -1338,7 +1341,6 @@ void makeAuxSwitchList(void) {
 int updateAuxSwitches(int id) {
     switch(id) {
         case ASO:
-            sprintf(debug,"autoShutOff = %i", auxSwitchStruct[getAuxSwitchIndexFromID(id)].auxSwitchState);
             return autoShutOff = auxSwitchStruct[getAuxSwitchIndexFromID(id)].auxSwitchState;
     }
     return -1;
@@ -1613,17 +1615,18 @@ void resetVariables(int modeIndex) {
             mplane = 3;
             splane = 0;
           	//adjust color intensity (dim by percent)
-          	amcolor = fadeColor(orange, 0.6);   //dim orange;
-          	pmcolor = fadeColor(teal, 0.6);     //dim teal;
+          	amcolor = fadeColor(orange, 0.4);   //dim orange;
+          	pmcolor = fadeColor(teal, 0.4);     //dim teal;
             nextBg = currentBg = 0;
             thickness = 1;
+            sprintf(clockMessage, "00:00:00XX");
             switch(whichTextMode) {
                 case 0:
                 case 1:
-                    pos = map(strlen(message), 1, 63, -(SIDE*.5), 0);
+                    pos = map(strlen(clockMessage), 1, 63, -(SIDE*.5), 0);
                     break;
                 case 2:
-                    pos = map(strlen(message), 1, 63, -(SIDE*.98), 0);
+                    pos = map(strlen(clockMessage), 1, 63, -(SIDE*.98), 0);
                     break;
             }
             whichTextMode++;
@@ -1633,8 +1636,7 @@ void resetVariables(int modeIndex) {
 		case IFTTTWEATHER:
 		{
             lastSwitchState[0] = switch1;
-            lastSwitchState[1] = switch2;
-            lastSwitchState[2] = switch3;
+            thickness = 1;
             switch(whichTextMode) {
                 case 0:
                 case 1:
@@ -1993,6 +1995,12 @@ void showClock() {
     else
         textClock();
 	
+    /* The ugliest workaround ever coded, just to cope with some bug in the compiler,
+     * which causes the modeParamList to be cleared whenever switch3 or switch4 are set. */
+    if(strlen(modeParamList) == 0) {
+        makeModeList();
+        delay(15);
+    }
 	if(stop) {demo = FALSE; return;}
     if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
 }
@@ -2000,7 +2008,6 @@ void showClock() {
 void textClock() {
     bg = getColorFromInteger(color1);    
     //static int frameCount = 0;
-    uint32_t col;
     int hTenths = hours / 10;
     int hUnits = hours % 10;
     int mTenths = minutes / 10;
@@ -2019,7 +2026,6 @@ void textClock() {
 
       bg = getColorFromInteger(Wheel(currentBg));
     }
-    //col = switch3 ? Wheel(frameCount%500) : color1;
     if(switch4)
         background(black);
     else
@@ -2029,7 +2035,13 @@ void textClock() {
     float ratio = (.5 - .05)/((120*.05) - .05);
     //(min + ratio*(value-smallest_item))
     float speedFactor = .05 + ratio * ((map(speed, 1, 120, 120, 1) * .05) - .05);
-    pos += speedFactor;
+    
+    /* The ugliest workaround ever coded, just to cope with some weird bug in the compiler,
+     * that's causing the modeParamList to be cleared whenever switch3 or switch4 are set. */
+    if((!switch1 && !switch2) && ((!switch3 && !switch4) || (switch3 || switch4)))
+        pos += speedFactor*2.0; //We also need to compensate for the delay introduced by the most hedious workaround on Earth...
+    else
+        pos += speedFactor;
 
     sprintf(clockMessage, "%i%i:%i%i:%i%i%s", hTenths, hUnits, mTenths, mUnits, sTenths, sUnits, switch2 ? "" : Time.isAM() ? "AM" : "PM");
     switch(whichTextMode) {
@@ -2191,20 +2203,37 @@ void iftttWeather(uint32_t c) {
     
     if((millis() - lastCommandReceived) < calculatedInterval) {
         if(isNewText) {
-            switch1 = TRUE;
-            switch2 = TRUE;
-            switch3 = FALSE;
+            background(black);
+            
+            //(largest_item - smallest_item) maps to (max-min)
+            float ratio = (.5 - .05)/((120*.05) - .05);
+            //(min + ratio*(value-smallest_item))
+            float speedFactor = .05 + ratio * ((map(speed, 1, 120, 120, 1) * .05) - .05);
+            pos += speedFactor;
+
             switch(whichTextMode) {
                 case 0:
-                    textMarquee(c, 0);
+                    //Can't call textMarquee(col, 0) wrapper directly, due to conflicts with switches 2 and 3
+                    marquee(message, pos, getColorFromInteger(c));
+                    if (pos >= (SIDE*map(strlen(message), 1, 63, 4, SIDE))+(strlen(message))*8)
+                        pos = map(strlen(message), 1, 63, -(SIDE*.5), 0);
                     break;
                 case 1:
-                    textScroll(c, 0);
+                    //Can't call textScroll(col, 0) wrapper directly, due to conflicts with switches 2 and 3
+                    scrollText(message, Point(pos - strlen(message), 0, 6), getColorFromInteger(c));
+                    if (pos >= (SIDE*map(strlen(message), 1, 63, 1, SIDE))+(strlen(message))*8)
+                        pos = map(strlen(message), 1, 63, -(SIDE*.5), 0);
                     break;
                 case 2:
-                    textSpin(c, 0);
+                    //Can't call textSpin(col, 0) wrapper directly, due to conflicts with switches 2 and 3
+                    scrollSpinningText(message, Point(pos - strlen(message), 0, ceil((SIDE-1)*.5)), getColorFromInteger(c));
+                    if (pos >= (SIDE*map(strlen(message), 1, 63, 1, SIDE))+(strlen(message))*8)
+                        pos = map(strlen(message), 1, 63, -SIDE, 0);
                     break;
             }
+            showPixels();
+        	if(stop) {demo = FALSE; return;}
+            if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
         }
         else {
             switch1 = FALSE;
@@ -2217,15 +2246,11 @@ void iftttWeather(uint32_t c) {
         isNewText = FALSE;
         brightness = lastBrightness;
         switch1 = lastSwitchState[0];
-        switch2 = lastSwitchState[1];
-        switch3 = lastSwitchState[2];
         currentModeID = lastModeID;
         if(currentModeID == getModeIndexFromID(IFTTTWEATHER))
             setNewMode(getModeIndexFromID(STANDBY));
         else
             setNewMode(getModeIndexFromID(currentModeID));
-        //sprintf(debug, "currentModeID: %d", currentModeID);
-        transition(black, true);
     }
     run = true;
 }
@@ -5903,7 +5928,7 @@ int SetMode(String command) {
                     break;
                 case '3':
                     switch3 = command.substring(beginIdx+3, idx).toInt() & 1;
-                    lastSwitchState[1] = switch3;
+                    lastSwitchState[2] = switch3;
                     break;
                 case '4':
                     switch4 = command.substring(beginIdx+3, idx).toInt() & 1;
