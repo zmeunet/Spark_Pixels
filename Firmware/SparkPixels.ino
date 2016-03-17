@@ -1,9 +1,9 @@
 /**
  ******************************************************************************
  * @fixed SparkPixels.ino:
- *	The ugliest workaround ever coded, just to cope with some weird bug in the compiler,
- *	that's causing the modeParamList to be cleared whenever switch3 or switch4 are set.
- * @author   Werner Moecke
+ *	Fixed issue in CLOCK mode, where the modeParamList was cleared whenever
+ *	switch3 or switch4 were set, due to a sub-dimensioned char array (clockMessage[]).
+ * @author   Kevin Carlborg
  * @version  V3.5
  * @date     16-March-2016 ~ 17-March-2016
  *
@@ -888,7 +888,7 @@ int requestTime, pollTime;
 //https://github.com/pipprojects/WM/blob/master/water-meter-2.ino
 
 /* ============================ CLOCK mode defines =========================== */
-char clockMessage[10]=" ";
+char clockMessage[11]=" ";
 int hrow, hplane;
 int mrow, mplane;
 int srow, splane;
@@ -1995,12 +1995,6 @@ void showClock() {
     else
         textClock();
 	
-    /* The ugliest workaround ever coded, just to cope with some bug in the compiler,
-     * which causes the modeParamList to be cleared whenever switch3 or switch4 are set. */
-    if(strlen(modeParamList) == 0) {
-        makeModeList();
-        delay(15);
-    }
 	if(stop) {demo = FALSE; return;}
     if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
 }
@@ -2035,13 +2029,7 @@ void textClock() {
     float ratio = (.5 - .05)/((120*.05) - .05);
     //(min + ratio*(value-smallest_item))
     float speedFactor = .05 + ratio * ((map(speed, 1, 120, 120, 1) * .05) - .05);
-    
-    /* The ugliest workaround ever coded, just to cope with some weird bug in the compiler,
-     * that's causing the modeParamList to be cleared whenever switch3 or switch4 are set. */
-    if((!switch1 && !switch2) && ((!switch3 && !switch4) || (switch3 || switch4)))
-        pos += speedFactor*2.0; //We also need to compensate for the delay introduced by the most hedious workaround on Earth...
-    else
-        pos += speedFactor;
+    pos += speedFactor;
 
     sprintf(clockMessage, "%i%i:%i%i:%i%i%s", hTenths, hUnits, mTenths, mUnits, sTenths, sUnits, switch2 ? "" : Time.isAM() ? "AM" : "PM");
     switch(whichTextMode) {
