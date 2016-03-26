@@ -1,14 +1,22 @@
 /**
  ******************************************************************************
+ * @extended SparkPixels.ino:
+ *		New mode: BIT CLOCK (based on Processing code by user "lapentab")
+ *		New Functions: bitClock, textClock, 
+ *		strRev(), integerToBinaryString(), padTo()
+ * @author   Werner Moecke
+ * @version  V3.6
+ * @date     20-March-2016 ~ 22-March-2016
+ *
  * @fixed SparkPixels.ino:
- *	Fixed issue in CLOCK mode, where the modeParamList was cleared whenever
- *	switch3 or switch4 were set, due to a sub-dimensioned char array (clockMessage[]).
+ *		Fixed issue in CLOCK mode, where the modeParamList was cleared whenever
+ *		switch3 or switch4 were set, due to a sub-dimensioned char array (clockMessage[]).
  * @author   Kevin Carlborg
  * @version  V3.5
  * @date     16-March-2016 ~ 17-March-2016
  *
  * @extended SparkPixels.ino:
- *	CLOCK mode now can sweep the background color, or just not have any (black)
+ *		CLOCK mode now can sweep the background color, or just not have any (black)
  *      TEXT MARQUEE/TEXT SCROLL/TEXT SPIN modes replaced by TEXT mode
  *      (tap the mode name to switch between effects)
  * @fixed SparkPixels.ino:
@@ -182,6 +190,8 @@ SYSTEM_THREAD(ENABLED);
 
 #include "neopixel/neopixel.h"
 #include <math.h>
+#include <string>
+#include <bitset>
 #define ON                      1
 #define OFF                     0
 
@@ -237,6 +247,7 @@ const int CUBE_CLASSICS               = 34; //credit: http://www.instructables.c
 const int IFTTTWEATHER                = 35; //credit: Kevin Carlborg, Werner Moecke (code improvements)
 const int DIGI                        = 36; //credit: Kevin Carlborg
 const int CLOCK                       = 37; //credit: Werner Moecke (based on Dennis Williamson's "Clock" viz: http://cubetube.org/gallery/newestFirst/258/)
+const int BITCLOCK                    = 38; //credit: "lapentab", Werner Moecke (Processing language (java) to C++ conversion)
 
 /* ======================= ADD NEW AUX SWITCH ID HERE. ======================= */
 // AUX SWITCH ID Defines
@@ -353,6 +364,7 @@ modeParams modeStruct[] =
         {  STANDBY,                     "OFF",                  0,          0,      FALSE   },  //credit: Kevin Carlborg
         {  NORMAL,                      "LIGHT",                0,          0,      FALSE   },  //credit: Kevin Carlborg
         {  ACIDDREAM,                   "ACID DREAM",           0,          0,      FALSE   },  //credit: Werner Moecke
+        {  BITCLOCK,                    "BIT CLOCK",            1,          4,      FALSE   },  //credit: "lapentab", Werner Moecke (Processing language (java) to C++ conversion)
         {  COLORBREATHE,                "BREATHE",              1,          1,      FALSE   },  //credit: Werner Moecke
         {  RAINBOW_BURST,               "BURST",                0,          0,      FALSE   },  //credit: Werner Moecke
         {  CHASER,                      "CHASER",               1,          0,      FALSE   },  //credit: Kevin Carlborg
@@ -404,7 +416,8 @@ switchParams switchTitleStruct[] =
 	   {  DIGI,          "Random Colors",       "Fade In",             "",                    ""                     },
 	   {  CUBE_CLASSICS, "Color Sweep",         "",                    "",                    ""                     },
 	   {  COLORBREATHE,  "Random Colors",       "",                    "",                    ""                     },
-	   {  CLOCK,         "3D Clock",            "24h Format",          "Color Sweep",         "No Background"        }
+	   {  CLOCK,         "3D Clock",            "24h Format",          "Color Sweep",         "No Background"        },
+	   {  BITCLOCK,      "24h Format",          "Color Sweep",         "Draw Lines",          "Rev. Bitweight"       }
 };
 
 /* ======================= ADD NEW AUX SWITCH STRUCT HERE. ======================= 
@@ -986,6 +999,16 @@ static const bool digits[10][5][3] = {
     }
 };
 
+/* ========================== BIT CLOCK mode defines ========================= */
+// Colors of the hour digits
+Color hourTensColor, hourOnesColor;
+// Colors of the minute digits
+Color minuteTensColor, minuteOnesColor;
+// Colors of the second digits
+Color secondTensColor, secondOnesColor;
+// This is for padding, it is set automatically later.
+int jitter;
+
 
 /* ============================ Required Prototypes ============================= */
 int showPixels(void);
@@ -1057,6 +1080,9 @@ uint32_t getHighestValFromRGB(Color col);
 uint32_t Wheel(byte WheelPos, float opacity=1.0);
 uint32_t colorMap(float val, float minVal, float maxVal);
 uint32_t lerpColor(uint32_t c1, uint32_t c2, uint32_t val, uint32_t minVal, uint32_t maxVal);
+std::string strRev(std::string str);
+std::string integerToBinaryString(int number);
+std::string padTo(std::string str, const size_t num, const char paddingChar);
 
 /* ======================= Spark Pixel Prototypes =============================== */
 int CubePainter(String command);
@@ -1123,9 +1149,12 @@ void twoColorChaser(uint32_t color1, uint32_t color2);
 void christmasWreath(uint32_t color1, uint32_t color2);
 void cubeGreeting(int textMode, int frameCount, float pos);
 void cubes(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4);
+void drawCube(int w, int h, int d, Point corner, Color voxelColor);
+void drawLightsFromBinary(int number, int segment, Color voxelColor);
 void display_digits(int number, int drow, int dplane, Color numcolor);
 void colorZoneChaser(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4);
 short FFT(short int dir,int m,float *x,float *y);
+
 
 void setup() {
     publishCloudVariables();
@@ -1480,6 +1509,9 @@ void runMode() {
 		case ACIDDREAM:
 		    cycleLerp();
 		    break;    
+		case BITCLOCK:
+		    bitClock();
+		    break;
      	case CHASER:
 		    colorChaser(color1);
 			break;
@@ -1597,6 +1629,34 @@ void runMode() {
 
 void resetVariables(int modeIndex) {
     switch (modeIndex) {
+        case BITCLOCK:
+            // Colors of the hour digits
+            hourTensColor = Color(0, 205, 102);
+            hourOnesColor = Color(0, 255, 127);
+            
+            // Colors of the minute digits
+            minuteTensColor = Color(99, 184, 255);
+            minuteOnesColor = Color(79, 148, 205);
+            
+            // Colors of the second digits
+            secondTensColor = Color(255, 48, 48);
+            secondOnesColor = Color(205, 0, 0);
+            
+            // Colors of the AM / PM indicator dots
+          	amcolor = fadeColor(orange, 0.4);   //dim orange;
+          	pmcolor = fadeColor(teal, 0.4);     //dim teal;
+            
+            // Color of the separating lines
+            currentBg = 0;
+          	/*bg = getColorFromInteger(lerpColor(Wheel(random(SIDE, 256), 0.25), 
+        			Wheel(random(SIDE, 256), 0.25), 
+        			random(SIDE, 256), 0, 255));*/
+
+            // This is for padding
+            jitter = 1;
+            
+            transitionAll(black,LINEAR);
+            break;
 		case CLOCK:
             hours = minutes = seconds = 0;
             h = m = s = Point(0, 0, 0);
@@ -2136,7 +2196,7 @@ void threeDClock() {
 	showPixels();
 	if(stop) {demo = FALSE; return;}
     if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
-  	delay(125);	// Sets the update rate for the background color
+  	delay(25);	// Sets the update rate for the background color
 }
 
 void display_digits(int number, int drow, int dplane, Color numcolor) {
@@ -2155,6 +2215,84 @@ void display_digits(int number, int drow, int dplane, Color numcolor) {
                     setPixelColor(dcol + col, SIDE - row - drow - 1, dplane, numcolor); //setVoxel(dcol + col, SIDE - row - drow - 1, dplane, numcolor);
     	dcol = 5;
 	}
+}
+
+void bitClock() {
+    run = TRUE;
+
+	if (switch1)    //use24hr
+    	hours = Time.hour();
+	else
+    	hours = Time.hourFormat12();
+	minutes = Time.minute();
+	seconds = Time.second();
+  	
+  	if (switch2) {  //SWEEP BACKGROUND
+        if (currentBg < 256)
+            currentBg+=2;
+        else
+            currentBg-=2;
+
+        bg = getColorFromInteger(lerpColor(strip.Color(bg.red, bg.green, bg.blue), 
+        		Wheel(currentBg, 0.4), currentBg, 0, 256));
+    }
+    else
+        bg = getColorFromInteger(color1);    
+
+    background(black);
+    if(switch3) {
+      	// Draw the lines
+    	drawCube(SIDE, SIDE/8, SIDE-1, Point(0, jitter, 0), bg); //0
+        drawCube(SIDE, SIDE/8, SIDE-1, Point(0, SIDE/8*2+jitter, 0), bg); //2
+        drawCube(SIDE, SIDE/8, SIDE-1, Point(0, SIDE/8*4+jitter, 0), bg); //4
+        drawCube(SIDE, SIDE/8, SIDE-1, Point(0, SIDE/8*6+jitter, 0), bg); // 6
+        drawCube(SIDE, SIDE/8, SIDE-1, Point(0, SIDE+jitter, 0), bg);   // 6
+    }
+    /*else
+        background(bg);*/
+
+  	// Draw the hours digits 
+  	drawLightsFromBinary(hours/10, 0, hourTensColor);
+    drawLightsFromBinary(hours%10, 1, hourOnesColor);
+
+  	// Draw the minutes digits 
+  	drawLightsFromBinary(minutes/10, 2, minuteTensColor);
+    drawLightsFromBinary(minutes%10, 3, minuteOnesColor); 
+
+  	// Draw the seconds digits 
+  	drawLightsFromBinary(seconds/10, 4, secondTensColor);
+    drawLightsFromBinary(seconds%10, 5, secondOnesColor);
+	
+  	// Draw the AM / PM indicator dots
+	if (!switch1) {  //use12hr
+		if (Time.isAM())
+            setPixelColor(0, SIDE-1, SIDE-1, amcolor);
+    	else
+            setPixelColor(0, SIDE-1, SIDE-1, pmcolor);
+    }
+	
+	showPixels();
+	if(stop) {demo = FALSE; return;}
+    if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+  	delay(25);	// Sets the update rate for the background color
+}
+
+// This function will draw lights from a number. The number is converted
+// into a binary string, then the string is parsed to see where to draw
+// the appropriate 'on' boxes, and turn off boxes that should be off.
+// segment is the x-'slot' to place the box in. For the clock, it is a
+// grid of 6 x-slots, with segment 0 being the leftmost slot.
+void drawLightsFromBinary(int number, int segment, Color voxelColor) {
+    // changing integer number to binary string of digits
+    std::string binary = integerToBinaryString(number); //Integer.toBinaryString(number);
+    if(!switch4) binary = strRev(binary);
+  	// pad the string so it is always 4 digits
+    padTo(binary, 4, '0');  //binary = std::string.format("%4s", binary).replace(' ', '0');
+    for (int i=0; i<binary.length(); i++)
+        if (binary.at(binary.length()-i-1) == '1') // If the digit is one, draw it
+            drawCube(SIDE/8, SIDE/8, SIDE-1, Point((SIDE/8)*segment+(SIDE/8), SIDE/4*(4-i)-(SIDE/8)-jitter, 0), voxelColor);
+        else // if not, darken the area
+            drawCube(SIDE/8, SIDE/8, SIDE-1, Point((SIDE/8)*segment+(SIDE/8), SIDE/4*(4-i)-(SIDE/8)-jitter, 0), fadeColor(voxelColor, 0.3));
 }
 
 /** Allow ifttt.com to trigger this mode based off of a weather recipe. 
@@ -5817,6 +5955,36 @@ uint32_t getHighestValFromRGB(Color col) {
         return col.green;
     else 
         return col.blue;
+}
+
+// Corner is the bottom left corner. Depth is depth towards cw (increases)
+void drawCube(int w, int h, int d, Point corner, Color voxelColor) {
+    for (int i = 0; i < w; i++)
+        for (int j = 0; j < h; j++)
+            drawLine(Point(i+corner.x, corner.y-j, corner.z), Point(i+corner.x, corner.y-j, corner.z+d), voxelColor);
+}
+
+// http://www.cplusplus.com/reference/bitset/bitset/to_string/
+std::string integerToBinaryString(int number) {
+    return std::bitset<4>(number).to_string();
+}
+
+// http://www.cplusplus.com/reference/string/string/push_back/
+std::string strRev(std::string str) {
+    std::string tmp;
+    for(int i=str.size()-1;i>=0;i--)
+        tmp.push_back(str.at(i));
+    if(tmp.size() == str.size())
+        return tmp;
+    else
+        return str;
+}
+
+// http://www.cplusplus.com/reference/string/string/insert/
+std::string padTo(std::string str, const size_t num, const char paddingChar) {
+    if(num > str.size())
+        str.insert(0, num - str.size(), paddingChar);
+    return str;
 }
 
 //Spark Cloud Mode
