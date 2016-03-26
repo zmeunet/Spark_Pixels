@@ -2,7 +2,8 @@
  ******************************************************************************
  * @extended SparkPixels.ino:
  *		New mode: BIT CLOCK (based on Processing code by user "lapentab")
- *		New Functions: bitClock, textClock, strRev(), integerToBinaryString(), padTo()
+ *		New Functions: bitClock, strRev(),
+ *		integerToBinaryString(), padTo()
  * @author   Werner Moecke
  * @version  V3.6
  * @date     20-March-2016 ~ 22-March-2016
