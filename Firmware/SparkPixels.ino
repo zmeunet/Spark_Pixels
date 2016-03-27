@@ -1,6 +1,13 @@
 /**
  ******************************************************************************
  * @extended SparkPixels.ino:
+ *		BIT CLOCK can now select colors for hours/minutes/seconds individually
+ *		Added REBOOT command to FnRouter() to cope with remote reboot command
+ * @author   Werner Moecke
+ * @version  V3.7
+ * @date     26-March-2016
+ *
+ * @extended SparkPixels.ino:
  *		New mode: BIT CLOCK (based on Processing code by user "lapentab")
  *		New Functions: bitClock, strRev(),
  *		integerToBinaryString(), padTo()
@@ -364,7 +371,7 @@ modeParams modeStruct[] =
         {  STANDBY,                     "OFF",                  0,          0,      FALSE   },  //credit: Kevin Carlborg
         {  NORMAL,                      "LIGHT",                0,          0,      FALSE   },  //credit: Kevin Carlborg
         {  ACIDDREAM,                   "ACID DREAM",           0,          0,      FALSE   },  //credit: Werner Moecke
-        {  BITCLOCK,                    "BIT CLOCK",            1,          4,      FALSE   },  //credit: "lapentab", Werner Moecke (Processing language (java) to C++ conversion)
+        {  BITCLOCK,                    "BIT CLOCK",            4,          4,      FALSE   },  //credit: "lapentab", Werner Moecke (Processing language (java) to C++ conversion)
         {  COLORBREATHE,                "BREATHE",              1,          1,      FALSE   },  //credit: Werner Moecke
         {  RAINBOW_BURST,               "BURST",                0,          0,      FALSE   },  //credit: Werner Moecke
         {  CHASER,                      "CHASER",               1,          0,      FALSE   },  //credit: Kevin Carlborg
@@ -416,8 +423,8 @@ switchParams switchTitleStruct[] =
 	   {  DIGI,          "Random Colors",       "Fade In",             "",                    ""                     },
 	   {  CUBE_CLASSICS, "Color Sweep",         "",                    "",                    ""                     },
 	   {  COLORBREATHE,  "Random Colors",       "",                    "",                    ""                     },
-	   {  CLOCK,         "3D Clock",            "24h Format",          "Color Sweep",         "No Background"        },
-	   {  BITCLOCK,      "24h Format",          "Color Sweep",         "Draw Lines",          "Rev. Bitweight"       }
+	   {  CLOCK,         "3D Clock",            "24h Format",          "Sweep Colors",        "No Background"        },
+	   {  BITCLOCK,      "24h Format",          "Sweep Line Color",    "Draw Lines",          "Rev. Bitweight"       }
 };
 
 /* ======================= ADD NEW AUX SWITCH STRUCT HERE. ======================= 
@@ -1631,16 +1638,16 @@ void resetVariables(int modeIndex) {
     switch (modeIndex) {
         case BITCLOCK:
             // Colors of the hour digits
-            hourTensColor = Color(0, 205, 102);
-            hourOnesColor = Color(0, 255, 127);
+            hourTensColor = getColorFromInteger(color1);    //Color(0, 205, 102);
+            hourOnesColor = getColorFromInteger(color1);    //Color(0, 255, 127);
             
             // Colors of the minute digits
-            minuteTensColor = Color(99, 184, 255);
-            minuteOnesColor = Color(79, 148, 205);
+            minuteTensColor = getColorFromInteger(color2);  //Color(99, 184, 255);
+            minuteOnesColor = getColorFromInteger(color2);  //Color(79, 148, 205);
             
             // Colors of the second digits
-            secondTensColor = Color(255, 48, 48);
-            secondOnesColor = Color(205, 0, 0);
+            secondTensColor = getColorFromInteger(color3);  //Color(255, 48, 48);
+            secondOnesColor = getColorFromInteger(color3);  //Color(205, 0, 0);
             
             // Colors of the AM / PM indicator dots
           	amcolor = fadeColor(orange, 0.4);   //dim orange;
@@ -2237,7 +2244,7 @@ void bitClock() {
         		Wheel(currentBg, 0.4), currentBg, 0, 256));
     }
     else
-        bg = getColorFromInteger(color1);    
+        bg = getColorFromInteger(color4);    
 
     background(black);
     if(switch3) {
@@ -2248,8 +2255,6 @@ void bitClock() {
         drawCube(SIDE, SIDE/8, SIDE-1, Point(0, SIDE/8*6+jitter, 0), bg); // 6
         drawCube(SIDE, SIDE/8, SIDE-1, Point(0, SIDE+jitter, 0), bg);   // 6
     }
-    /*else
-        background(bg);*/
 
   	// Draw the hours digits 
   	drawLightsFromBinary(hours/10, 0, hourTensColor);
@@ -6193,6 +6198,9 @@ int FnRouter(String command) {
 		//Update Switch flags
 		return updateAuxSwitches(id);
 	}
+    else if(command.substring(beginIdx, colonIdx)=="REBOOT") {
+        System.reset();
+    }
 	
     return -1;  
  }
