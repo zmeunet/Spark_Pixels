@@ -1,6 +1,13 @@
 /**
  ******************************************************************************
  * @extended SparkPixels.ino:
+ *		REBOOT is now possible from FnRouter() with a return value to give the
+ *		app some feedback before issuing a System.reset() on the photon (thx Kev)
+ * @author   Kevin Carlborg, Werner Moecke
+ * @version  V3.8
+ * @date     28-March-2016
+ *
+ * @extended SparkPixels.ino:
  *		BIT CLOCK can now select colors for hours/minutes/seconds individually
  *		Added REBOOT command to FnRouter() to cope with remote reboot command
  * @author   Werner Moecke
@@ -465,6 +472,7 @@ bool run;           //Use this for modes that don't need to loop. Set the color,
 bool stop;          //Use this to break out of sequence loops when changing to a new mode
 bool demo;          //Use this to enable/disable the demo sequence playback 
 bool isFirstLap;
+bool reboot;        //Use this to flag when a System.reset() is requested by the phone app.
 
 //Misc variables
 int speed; //not to be confused with speedIndex below, this is the local speed (delay) value
@@ -1184,6 +1192,7 @@ void setup() {
     switch3 = lastSwitchState[2] = FALSE;
     switch4 = lastSwitchState[3] = FALSE;
     autoShutOff = FALSE;    //Initialize auto shut off mode variable
+    reboot = FALSE;         //Initialize reboot request flag variable
 	currentModeID = getModeIndexFromID(NORMAL);
 	defaultColor = strip.Color(incandescent.red, incandescent.green, incandescent.blue);
 	snowFlakeColor = getColorFromInteger(0xFFFFFF);
@@ -1388,6 +1397,10 @@ void loop() {
 		stop = FALSE;
         if(demo) { runDemo(); }
 		else { runMode(); }
+    }
+    if(reboot) {
+            delay(500); //Need this here otherwise the Cloud Function returned response is null
+            System.reset();
     }
     
     unsigned long currentMillis = millis();
@@ -6199,7 +6212,10 @@ int FnRouter(String command) {
 		return updateAuxSwitches(id);
 	}
     else if(command.substring(beginIdx, colonIdx)=="REBOOT") {
-        System.reset();
+        //System.reset();
+        reboot = TRUE;
+        stop = TRUE;
+        return 1;
     }
 	
     return -1;  
