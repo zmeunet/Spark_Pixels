@@ -1,6 +1,12 @@
 /**
  ******************************************************************************
  * @extended SparkPixels.ino:
+ *		BIT CLOCK mode fix to dim the separating lines when not sweeping colors
+ * @author   Werner Moecke
+ * @version  V3.9
+ * @date     30-March-2016
+ *
+ * @extended SparkPixels.ino:
  *		REBOOT is now possible from FnRouter() with a return value to give the
  *		app some feedback before issuing a System.reset() on the photon (thx Kev)
  * @author   Kevin Carlborg, Werner Moecke
@@ -2247,20 +2253,20 @@ void bitClock() {
 	minutes = Time.minute();
 	seconds = Time.second();
   	
-  	if (switch2) {  //SWEEP BACKGROUND
-        if (currentBg < 256)
-            currentBg+=2;
-        else
-            currentBg-=2;
-
-        bg = getColorFromInteger(lerpColor(strip.Color(bg.red, bg.green, bg.blue), 
-        		Wheel(currentBg, 0.4), currentBg, 0, 256));
-    }
-    else
-        bg = getColorFromInteger(color4);    
-
     background(black);
     if(switch3) {
+      	if (switch2) {  //SWEEP BACKGROUND
+            if (currentBg < 256)
+                currentBg+=2;
+            else
+                currentBg-=2;
+    
+            bg = getColorFromInteger(lerpColor(strip.Color(bg.red, bg.green, bg.blue), 
+            		Wheel(currentBg, 0.4), currentBg, 0, 256));
+        }
+        else
+            bg = fadeColor(getColorFromInteger(color4), 0.4);    
+
       	// Draw the lines
     	drawCube(SIDE, SIDE/8, SIDE-1, Point(0, jitter, 0), bg); //0
         drawCube(SIDE, SIDE/8, SIDE-1, Point(0, SIDE/8*2+jitter, 0), bg); //2
