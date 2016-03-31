@@ -4079,6 +4079,7 @@ void cheerlights(void) {
         	            transitionAll(col, POLAR);
         	            break;
         	        case 1:
+        	            color1 = color2 = color3 = color4 = c;
         	            colorZone(c, c, c, c, run);
         	            break;
         	        case 2:
