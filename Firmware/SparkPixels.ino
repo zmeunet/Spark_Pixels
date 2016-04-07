@@ -3,8 +3,8 @@
  * @extended SparkPixels.ino:
  *	Implemented local EEPROM storage for CUBE PAINTER and TEXT modes
  *      (Per request by LKG -- initial version)
- *      Note: function clearEEPROM() implemented due to the lack of a clear()
- *            function in the EEPROM class in v0.4.9 firmware
+ *      Note: function clearEEPROM() implemented due to the missing clear()
+ *            function in the EEPROM class (v0.4.9 firmware)
  * @author   Werner Moecke
  * @version  V3.91b
  * @date     06-April-2016 ~ 07-April-2016
