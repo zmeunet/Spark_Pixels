@@ -1,6 +1,15 @@
 /**
  ******************************************************************************
  * @extended SparkPixels.ino:
+ *	Implemented local EEPROM storage for CUBE PAINTER and TEXT modes
+ *      (Per request by LKG -- initial version)
+ *      Note: function clearEEPROM() implemented due to the lack of a clear()
+ *            function in the EEPROM class in v0.4.9 firmware
+ * @author   Werner Moecke
+ * @version  V3.91b
+ * @date     06-April-2016 ~ 07-April-2016
+ *
+ * @extended SparkPixels.ino:
  *		BIT CLOCK mode fix to dim the separating lines when not sweeping colors
  * @author   Werner Moecke
  * @version  V3.9
@@ -505,6 +514,7 @@ int timeZone = TIME_ZONE_OFFSET;
 Color lastCol;
 
 //Particle Cloud Variables
+#define TEXT_LENGTH             64
 //int wifi = 0;           //used for general info and setup
 int tHour = 0;          //used for general info and setup
 int speedIndex;         //Let the cloud know what speed preset we are using
@@ -512,8 +522,8 @@ int brightness;         //How bright do we want these things anyway
 char modeNameList[MAX_PUBLISHED_STRING_SIZE] = "None";  //Holds all mode info comma delimited. Use this to populate the android app
 char modeParamList[MAX_PUBLISHED_STRING_SIZE] = "None";
 char auxSwitchList[MAX_PUBLISHED_STRING_SIZE] = "None";
-char currentModeName[64] = "None";  //Holds current selected mode
-char textInputString[64];           //Holds the Text for any mode needing a test input - only useful for a Neopixel Matrix
+char currentModeName[TEXT_LENGTH] = "None";  //Holds current selected mode
+char textInputString[TEXT_LENGTH];           //Holds the Text for any mode needing a test input - only useful for a Neopixel Matrix
 char debug[200];                    //We might want some debug text for development
 bool varsRegistered = FALSE;        //Flags if we have all of our cloud variables registered successfully
 
@@ -579,7 +589,8 @@ float imaginary[ARRAY_SIZE];        //[(int)pow(2,M)]
 float maxVal=8;
 
 /* ========================= Text Defines / Prototypes ========================= */
-char message[64]=" ";
+#define TEXT_START_ADDR         (PIXEL_CNT * BPP) + 1
+char message[TEXT_LENGTH]=" ";
 int thickness=0;
 int whichTextMode = 0;
 float pos=0;
@@ -858,7 +869,7 @@ int idex, ihue; //We define these here as they serve to flag if we need
                 //to blank the cube every time the mode is called
 
 /* ============================ SQUARRAL mode Defines =========================== */
-#define TRAIL_LENGTH 50
+#define TRAIL_LENGTH            50
 int frame;
 int bound;
 int boundInc;
@@ -879,8 +890,8 @@ float phase, colorStretch;
 #define ASO_STATUS_ON           2001*/
 
 /* ========================= Transition function defines ======================== */
-#define LINEAR  0
-#define POLAR   1
+#define LINEAR                  0
+#define POLAR                   1
 
 /* ========================== SetMode return  Defines  ========================== */
 #define NO_CHANGE               1000
@@ -909,8 +920,8 @@ bool flipColor;
 Color cubeCol;
 
 /* ========================= Cheerlights mode defines ======================== */
-#define POLLING_INTERVAL 3000   // how often the photon polls the cheerlights API
-#define RESPONSE_TIMEOUT 500	// the timeout (in ms) to wait for a response from the cheerlights API
+#define POLLING_INTERVAL        3000    // how often the photon polls the cheerlights API
+#define RESPONSE_TIMEOUT        500     // the timeout (in ms) to wait for a response from the cheerlights API
 TCPClient client;       // a TCP instance to let us query the cheerlights API over TCP
 String hostname, path;  // the URL and path to cheerlights' thingspeak directory
 String response;        // the response read from querying cheerlights' thingspeak directory
@@ -920,6 +931,13 @@ Color cheerLightsColor;
 int requestTime, pollTime;
 //Thread* cheerlightsThread;  //https://community.particle.io/t/particle-photon-multi-blink-sample-using-threads/16214/3
 //https://github.com/pipprojects/WM/blob/master/water-meter-2.ino
+
+/* ========================= CUBE PAINTER mode defines ======================= */
+#define MAX_EEPROM_SIZE         2047    // the maximum available space in EEPROM storage (Photon)
+#define UPDATE_TIMEOUT          1200    // the interval between EEPROM updates
+Color drawingBuffer[PIXEL_CNT];
+bool isUpdate = FALSE;
+unsigned long bufferSaveInterval;
 
 /* ============================ CLOCK mode defines =========================== */
 char clockMessage[11]=" ";
@@ -1580,7 +1598,14 @@ void runMode() {
 		case CUBE_PAINTER:
 		    // Nothing to do; function is called through the Cloud API
 		    showPixels();
-		    delay(100);
+            // Time to update the EEPROM yet?
+            if(isUpdate && (millis() - bufferSaveInterval > UPDATE_TIMEOUT)) {
+                // Update the EEPROM storage area
+                EEPROM.put(0, drawingBuffer);
+                bufferSaveInterval = millis();
+                isUpdate = FALSE;
+            }
+		    //delay(100);
 		    break;
 		case CUBES:
 		    cubes(color1, color2, color3, color4);
@@ -1819,10 +1844,44 @@ void resetVariables(int modeIndex) {
             }
             transitionAll(black,LINEAR);	//fadeToBlack();
 		    break;
+		case CUBE_PAINTER:
+		{
+            bool redraw = FALSE;
+            
+            /** DEBUG **/
+            //clearEEPROM();  //EEPROM.clear();
+            
+            // Check EEPROM area and initialize flag if there was color data previoulsy set
+            EEPROM.get(0, drawingBuffer);
+            for(int i = 0; i < PIXEL_CNT; i++) {
+                if(drawingBuffer[i].red != 0xFF || 
+                   drawingBuffer[i].green != 0xFF || 
+                   drawingBuffer[i].blue != 0xFF ) {
+                    redraw = TRUE;
+                    break;
+                }
+            }
+            // If there is no color data stored in EEPROM area then blank the entire buffer
+            // (EEPROM returns an array filled with 255, so we need to fill it with zeros)
+            if(!redraw) {
+                for(int i = 0; i < PIXEL_CNT; i++) {
+                    drawingBuffer[i].red = 0;
+                    drawingBuffer[i].green = 0;
+                    drawingBuffer[i].blue = 0;
+                }
+            }
+            
+            // (If there's color data previously stored, there's nothing to do)
+            // In either case, redraw the cube with the color data from the buffer array
+            for(int i = 0; i < PIXEL_CNT; i++)
+                strip.setPixelColor(i, strip.Color(drawingBuffer[i].red, drawingBuffer[i].green, drawingBuffer[i].blue));
+            
+            bufferSaveInterval = millis();
+		    break;
+		}
      	case COLORALL:
 		    break;
 		case DIGI:
-		case CUBE_PAINTER:
      	case COLORBREATHE:
      	case CHASER:
 		case ZONE:
@@ -2265,7 +2324,7 @@ void bitClock() {
             		Wheel(currentBg, 0.4), currentBg, 0, 256));
         }
         else
-            bg = fadeColor(getColorFromInteger(color4), 0.4);    
+            bg = fadeColor(getColorFromInteger(color4), 0.4);
 
       	// Draw the lines
     	drawCube(SIDE, SIDE/8, SIDE-1, Point(0, jitter, 0), bg); //0
@@ -3824,12 +3883,12 @@ int randomPixelFill(uint32_t c) {
 
 int CubePainter(String command) {
 	if(currentModeID != CUBE_PAINTER) {return 0;}
-	
+    
 	int beginIdx = 0;
 	//int returnValue = -1;
 	int idx = command.indexOf(',');
     int voxelIdx;
-    Color voxelCol;
+    //Color voxelCol;
     run = TRUE;
     
     // Trim extra spaces
@@ -3846,9 +3905,13 @@ int CubePainter(String command) {
             //itoa(voxelIdx, debug, 10);
         }
         else if(command.charAt(beginIdx) == '#') {
-    		voxelCol.red=hexToInt(command.charAt(beginIdx+1))*16+hexToInt(command.charAt(beginIdx+2));
+    		/*voxelCol.red=hexToInt(command.charAt(beginIdx+1))*16+hexToInt(command.charAt(beginIdx+2));
     		voxelCol.green=hexToInt(command.charAt(beginIdx+3))*16+hexToInt(command.charAt(beginIdx+4));
-    		voxelCol.blue=hexToInt(command.charAt(beginIdx+5))*16+hexToInt(command.charAt(beginIdx+6));
+    		voxelCol.blue=hexToInt(command.charAt(beginIdx+5))*16+hexToInt(command.charAt(beginIdx+6));*/
+    		drawingBuffer[voxelIdx].red = hexToInt(command.charAt(beginIdx+1))*16+hexToInt(command.charAt(beginIdx+2));
+    		drawingBuffer[voxelIdx].green = hexToInt(command.charAt(beginIdx+3))*16+hexToInt(command.charAt(beginIdx+4));
+    		drawingBuffer[voxelIdx].blue = hexToInt(command.charAt(beginIdx+5))*16+hexToInt(command.charAt(beginIdx+6));
+    		isUpdate = TRUE;
             /** DEBUG **/
             //itoa(strip.Color(voxelCol.red, voxelCol.green, voxelCol.blue), debug, 10);
         }
@@ -3856,15 +3919,32 @@ int CubePainter(String command) {
             int startIdx, endIdx;
             startIdx = command.substring(beginIdx+1, command.indexOf(':', beginIdx)).toInt();
             endIdx = command.substring(command.indexOf(':', beginIdx)+1, idx).toInt();
-            for(int i=startIdx; i<=endIdx; i++)
+            for(int i=startIdx; i<=endIdx; i++) {
                 strip.setPixelColor(i, 0);
+                drawingBuffer[i].red = 0;
+                drawingBuffer[i].green = 0;
+                drawingBuffer[i].blue = 0;
+            }
+            isUpdate = TRUE;
           	return 0;
         }
 		beginIdx = idx + 1;
 		idx = command.indexOf(',', beginIdx);    
     }
-    strip.setPixelColor(voxelIdx, strip.Color(voxelCol.red, voxelCol.green, voxelCol.blue));
+    
+    if(isUpdate) {
+        strip.setPixelColor(voxelIdx, strip.Color(drawingBuffer[voxelIdx].red, drawingBuffer[voxelIdx].green, drawingBuffer[voxelIdx].blue));
+        /*strip.setPixelColor(voxelIdx, strip.Color(voxelCol.red, voxelCol.green, voxelCol.blue));
+        drawingBuffer[voxelIdx].red = voxelCol.red;
+        drawingBuffer[voxelIdx].green = voxelCol.green;
+        drawingBuffer[voxelIdx].blue = voxelCol.blue;*/
+    }
     return 0;
+}
+
+inline void clearEEPROM(void) {
+    for(int i = 0; i < MAX_EEPROM_SIZE; i++)
+        EEPROM.write(i, 0xFF);
 }
 
 // Set all pixels in the strip to a solid color
@@ -6230,7 +6310,28 @@ int FnRouter(String command) {
 
 //Added Particle Function to get Text Input
 int SetText(String command) {
-    sprintf(textInputString,"%s", command.c_str());
+    bool isTextSet = FALSE;
+    /** DEBUG **/
+    //clearEEPROM();  //EEPROM.clear();
+    
+    // Check EEPROM area and initialize text variable with data previoulsy set
+    EEPROM.get(TEXT_START_ADDR, textInputString);
+    for(int i = 0; i < TEXT_LENGTH; i++) {
+        if(textInputString[i] != 0xFF) {
+            isTextSet = TRUE;
+            break;
+        }
+    }
+    if(isTextSet) {
+        if(strcmp(textInputString, command.c_str()) != 0 && strlen(command.c_str()) > 0) {
+            sprintf(textInputString,"%s", command.c_str());
+            EEPROM.put(TEXT_START_ADDR, textInputString);
+        }
+    }
+    else {
+        sprintf(textInputString,"%s", command.c_str());
+        EEPROM.put(TEXT_START_ADDR, textInputString);
+    }
 	return 1;
 }
 
