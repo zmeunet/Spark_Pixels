@@ -1,7 +1,14 @@
 /**
  ******************************************************************************
  * @extended SparkPixels.ino:
- *	Implemented local EEPROM storage for CUBE PAINTER and TEXT modes
+ *		Updating the EEPROM storage area with EEPROM.write() in CUBE PAINTER;
+ *		We're not using EEPROM.put() due to huge performance impact in updating the cube
+ * @author   Werner Moecke
+ * @version  V3.92b
+ * @date     07-April-2016 ~ 09-April-2016
+ *
+ * @extended SparkPixels.ino:
+ *		Implemented local EEPROM storage for CUBE PAINTER and TEXT modes
  *      (Per request by LKG -- initial version)
  *      Note: function clearEEPROM() implemented due to the missing clear()
  *            function in the EEPROM class (v0.4.9 firmware)
@@ -934,10 +941,8 @@ int requestTime, pollTime;
 
 /* ========================= CUBE PAINTER mode defines ======================= */
 #define MAX_EEPROM_SIZE         2047    // the maximum available space in EEPROM storage (Photon)
-#define UPDATE_TIMEOUT          1200    // the interval between EEPROM updates
-Color drawingBuffer[PIXEL_CNT];
-bool isUpdate = FALSE;
-unsigned long bufferSaveInterval;
+//Color drawingBuffer[PIXEL_CNT];
+unsigned char drawingBuffer[PIXEL_CNT*BPP];
 
 /* ============================ CLOCK mode defines =========================== */
 char clockMessage[11]=" ";
@@ -1467,6 +1472,14 @@ void random_seed_from_cloud(unsigned int seed) {
    // don't do anything with this. Continue with existing seed.
 }
 
+/* Function clearEEPROM() implemented due to the missing clear()
+ * function in the EEPROM class (v0.4.9 firmware)
+ */
+inline void clearEEPROM(void) {
+    for(int i = 0; i < MAX_EEPROM_SIZE; i++)
+        EEPROM.write(i, 0xFF);
+}
+
 void runDemo() {
     static int textMode=0, frameCount=0, previousModeID=currentModeID;
     static int endOfMessage=0, cycleCount=-1;
@@ -1598,14 +1611,7 @@ void runMode() {
 		case CUBE_PAINTER:
 		    // Nothing to do; function is called through the Cloud API
 		    showPixels();
-            // Time to update the EEPROM yet?
-            if(isUpdate && (millis() - bufferSaveInterval > UPDATE_TIMEOUT)) {
-                // Update the EEPROM storage area
-                EEPROM.put(0, drawingBuffer);
-                bufferSaveInterval = millis();
-                isUpdate = FALSE;
-            }
-		    //delay(100);
+		    delay(100);
 		    break;
 		case CUBES:
 		    cubes(color1, color2, color3, color4);
@@ -1846,37 +1852,29 @@ void resetVariables(int modeIndex) {
 		    break;
 		case CUBE_PAINTER:
 		{
-            bool redraw = FALSE;
-            
             /** DEBUG **/
             //clearEEPROM();  //EEPROM.clear();
+            bool redraw = FALSE;
             
             // Check EEPROM area and initialize flag if there was color data previoulsy set
             EEPROM.get(0, drawingBuffer);
-            for(int i = 0; i < PIXEL_CNT; i++) {
-                if(drawingBuffer[i].red != 0xFF || 
-                   drawingBuffer[i].green != 0xFF || 
-                   drawingBuffer[i].blue != 0xFF ) {
+            for(int i=0; i<(PIXEL_CNT*BPP); i++) {
+                if(drawingBuffer[i] != 0xFF) {
                     redraw = TRUE;
                     break;
                 }
             }
             // If there is no color data stored in EEPROM area then blank the entire buffer
-            // (EEPROM returns an array filled with 255, so we need to fill it with zeros)
+            // (EEPROM.get() returns an array filled with 255, so we need to fill it with 0's)
             if(!redraw) {
-                for(int i = 0; i < PIXEL_CNT; i++) {
-                    drawingBuffer[i].red = 0;
-                    drawingBuffer[i].green = 0;
-                    drawingBuffer[i].blue = 0;
-                }
+                for(int i=0; i<(PIXEL_CNT*BPP); i++)
+                    drawingBuffer[i] = 0;
             }
             
             // (If there's color data previously stored, there's nothing to do)
             // In either case, redraw the cube with the color data from the buffer array
-            for(int i = 0; i < PIXEL_CNT; i++)
-                strip.setPixelColor(i, strip.Color(drawingBuffer[i].red, drawingBuffer[i].green, drawingBuffer[i].blue));
-            
-            bufferSaveInterval = millis();
+            for(int i=0; i<(PIXEL_CNT*BPP); i+=BPP)
+                strip.setPixelColor(i/3, strip.Color(drawingBuffer[i], drawingBuffer[i+1], drawingBuffer[i+2]));
 		    break;
 		}
      	case COLORALL:
@@ -2134,14 +2132,14 @@ void showClock() {
     	hours = Time.hourFormat12();
 	minutes = Time.minute();
 	seconds = Time.second();
+	
+	if(stop) {demo = FALSE; return;}
+    if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
 
     if(switch1) 
         threeDClock();
     else
         textClock();
-	
-	if(stop) {demo = FALSE; return;}
-    if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
 }
 
 void textClock() {
@@ -2177,6 +2175,8 @@ void textClock() {
     pos += speedFactor;
 
     sprintf(clockMessage, "%i%i:%i%i:%i%i%s", hTenths, hUnits, mTenths, mUnits, sTenths, sUnits, switch2 ? "" : Time.isAM() ? "AM" : "PM");
+	if(stop) {demo = FALSE; return;}
+    if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
     switch(whichTextMode) {
         case 0:
         {
@@ -2277,7 +2277,6 @@ void threeDClock() {
 	display_digits(minutes, mrow, mplane, mdcolor);
 	display_digits(seconds, srow, splane, sdcolor);
 
-	//checkFlipState();
 	showPixels();
 	if(stop) {demo = FALSE; return;}
     if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
@@ -2295,9 +2294,12 @@ void display_digits(int number, int drow, int dplane, Color numcolor) {
 
 	for (int d = 0; d <= 1; d++){
         for (int row = 0; row < 5; row++)
-            for (int col = 0; col < 3; col++)
+            for (int col = 0; col < 3; col++) {
+            	if(stop) {demo = FALSE; return;}
+                if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
                 if (digits[indiv[d]][row][col])
                     setPixelColor(dcol + col, SIDE - row - drow - 1, dplane, numcolor); //setVoxel(dcol + col, SIDE - row - drow - 1, dplane, numcolor);
+            }
     	dcol = 5;
 	}
 }
@@ -2326,6 +2328,8 @@ void bitClock() {
         else
             bg = fadeColor(getColorFromInteger(color4), 0.4);
 
+    	if(stop) {demo = FALSE; return;}
+        if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
       	// Draw the lines
     	drawCube(SIDE, SIDE/8, SIDE-1, Point(0, jitter, 0), bg); //0
         drawCube(SIDE, SIDE/8, SIDE-1, Point(0, SIDE/8*2+jitter, 0), bg); //2
@@ -2371,11 +2375,14 @@ void drawLightsFromBinary(int number, int segment, Color voxelColor) {
     if(!switch4) binary = strRev(binary);
   	// pad the string so it is always 4 digits
     padTo(binary, 4, '0');  //binary = std::string.format("%4s", binary).replace(' ', '0');
-    for (int i=0; i<binary.length(); i++)
+    for (int i=0; i<binary.length(); i++) {
+    	if(stop) {demo = FALSE; return;}
+        if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
         if (binary.at(binary.length()-i-1) == '1') // If the digit is one, draw it
             drawCube(SIDE/8, SIDE/8, SIDE-1, Point((SIDE/8)*segment+(SIDE/8), SIDE/4*(4-i)-(SIDE/8)-jitter, 0), voxelColor);
         else // if not, darken the area
             drawCube(SIDE/8, SIDE/8, SIDE-1, Point((SIDE/8)*segment+(SIDE/8), SIDE/4*(4-i)-(SIDE/8)-jitter, 0), fadeColor(voxelColor, 0.3));
+    }
 }
 
 /** Allow ifttt.com to trigger this mode based off of a weather recipe. 
@@ -3888,7 +3895,6 @@ int CubePainter(String command) {
 	//int returnValue = -1;
 	int idx = command.indexOf(',');
     int voxelIdx;
-    //Color voxelCol;
     run = TRUE;
     
     // Trim extra spaces
@@ -3900,51 +3906,44 @@ int CubePainter(String command) {
     
     while(idx != -1) {
         if(command.charAt(beginIdx) == 'I') {
-            voxelIdx = command.substring(beginIdx+1, idx).toInt();
-            /** DEBUG **/
-            //itoa(voxelIdx, debug, 10);
+            voxelIdx = (command.substring(beginIdx+1, idx).toInt())*BPP;
         }
         else if(command.charAt(beginIdx) == '#') {
-    		/*voxelCol.red=hexToInt(command.charAt(beginIdx+1))*16+hexToInt(command.charAt(beginIdx+2));
-    		voxelCol.green=hexToInt(command.charAt(beginIdx+3))*16+hexToInt(command.charAt(beginIdx+4));
-    		voxelCol.blue=hexToInt(command.charAt(beginIdx+5))*16+hexToInt(command.charAt(beginIdx+6));*/
-    		drawingBuffer[voxelIdx].red = hexToInt(command.charAt(beginIdx+1))*16+hexToInt(command.charAt(beginIdx+2));
-    		drawingBuffer[voxelIdx].green = hexToInt(command.charAt(beginIdx+3))*16+hexToInt(command.charAt(beginIdx+4));
-    		drawingBuffer[voxelIdx].blue = hexToInt(command.charAt(beginIdx+5))*16+hexToInt(command.charAt(beginIdx+6));
-    		isUpdate = TRUE;
-            /** DEBUG **/
-            //itoa(strip.Color(voxelCol.red, voxelCol.green, voxelCol.blue), debug, 10);
+    		// red
+    		drawingBuffer[voxelIdx] = hexToInt(command.charAt(beginIdx+1))*16+hexToInt(command.charAt(beginIdx+2));
+    		// green
+    		drawingBuffer[voxelIdx+1] = hexToInt(command.charAt(beginIdx+3))*16+hexToInt(command.charAt(beginIdx+4));
+    		// blue
+    		drawingBuffer[voxelIdx+2] = hexToInt(command.charAt(beginIdx+5))*16+hexToInt(command.charAt(beginIdx+6));
         }
         else if(command.charAt(beginIdx) == 'C') {
             int startIdx, endIdx;
-            startIdx = command.substring(beginIdx+1, command.indexOf(':', beginIdx)).toInt();
-            endIdx = command.substring(command.indexOf(':', beginIdx)+1, idx).toInt();
-            for(int i=startIdx; i<=endIdx; i++) {
-                strip.setPixelColor(i, 0);
-                drawingBuffer[i].red = 0;
-                drawingBuffer[i].green = 0;
-                drawingBuffer[i].blue = 0;
+            startIdx = (command.substring(beginIdx+1, command.indexOf(':', beginIdx)).toInt())*BPP;
+            endIdx = (command.substring(command.indexOf(':', beginIdx)+1, idx).toInt())*BPP;
+            for(int i=startIdx; i<=endIdx; i+=BPP) {
+                strip.setPixelColor(i/BPP, 0);
+                drawingBuffer[i+0] = 0; // red
+                drawingBuffer[i+1] = 0; // green
+                drawingBuffer[i+2] = 0; // blue
+                // Update the EEPROM storage area with EEPROM.write();
+                // We're not using EEPROM.put() due to huge performance impact in updating the cube
+                EEPROM.write(i+0, 0);   // red
+                EEPROM.write(i+1, 0);   // green
+                EEPROM.write(i+2, 0);   // blue
             }
-            isUpdate = TRUE;
           	return 0;
         }
 		beginIdx = idx + 1;
 		idx = command.indexOf(',', beginIdx);    
     }
     
-    if(isUpdate) {
-        strip.setPixelColor(voxelIdx, strip.Color(drawingBuffer[voxelIdx].red, drawingBuffer[voxelIdx].green, drawingBuffer[voxelIdx].blue));
-        /*strip.setPixelColor(voxelIdx, strip.Color(voxelCol.red, voxelCol.green, voxelCol.blue));
-        drawingBuffer[voxelIdx].red = voxelCol.red;
-        drawingBuffer[voxelIdx].green = voxelCol.green;
-        drawingBuffer[voxelIdx].blue = voxelCol.blue;*/
-    }
+    strip.setPixelColor(voxelIdx/BPP, strip.Color(drawingBuffer[voxelIdx], drawingBuffer[voxelIdx+1], drawingBuffer[voxelIdx+2]));
+    // Update the EEPROM storage area with EEPROM.write();
+    // We're not using EEPROM.put() due to huge performance impact in updating the cube
+    EEPROM.write(voxelIdx+0, drawingBuffer[voxelIdx+0]);    // red
+    EEPROM.write(voxelIdx+1, drawingBuffer[voxelIdx+1]);    // green
+    EEPROM.write(voxelIdx+2, drawingBuffer[voxelIdx+2]);    // blue
     return 0;
-}
-
-inline void clearEEPROM(void) {
-    for(int i = 0; i < MAX_EEPROM_SIZE; i++)
-        EEPROM.write(i, 0xFF);
 }
 
 // Set all pixels in the strip to a solid color
@@ -6316,7 +6315,7 @@ int SetText(String command) {
     
     // Check EEPROM area and initialize text variable with data previoulsy set
     EEPROM.get(TEXT_START_ADDR, textInputString);
-    for(int i = 0; i < TEXT_LENGTH; i++) {
+    for(int i=0; i<TEXT_LENGTH; i++) {
         if(textInputString[i] != 0xFF) {
             isTextSet = TRUE;
             break;
@@ -6325,11 +6324,13 @@ int SetText(String command) {
     if(isTextSet) {
         if(strcmp(textInputString, command.c_str()) != 0 && strlen(command.c_str()) > 0) {
             sprintf(textInputString,"%s", command.c_str());
+            // Update the EEPROM storage area with EEPROM.put();
             EEPROM.put(TEXT_START_ADDR, textInputString);
         }
     }
     else {
         sprintf(textInputString,"%s", command.c_str());
+        // Update the EEPROM storage area with EEPROM.put();
         EEPROM.put(TEXT_START_ADDR, textInputString);
     }
 	return 1;
