@@ -1,6 +1,35 @@
 /**
  ******************************************************************************
  * @extended SparkPixels.ino:
+ *		New features:
+ *		- EEPROM storage: now brightness/speed/current mode are stored internally;
+ *		  meaning the cube remembers those across reboots and power-cycles.
+ *		  (To enable the last mode memory feature, you need to open the 
+ *		  "Aux Switch Panel" in the Android app, and check "Remember Last Mode")
+ *		Fixes:
+ *		- Attempt to fix the issue where cloud variables aren't correctly published
+ *		  for some photons exhibit inconsistent behavior and can't be detected by the app;
+ *		  Fixes include: refactoring constant and variable types, moving globals to local,
+ *		  moving global variables' initialization from declaration, and also removing a
+ *		  a few modes that were not so popular.
+ *		New modes:
+ *		- ACID RAIN/GOLD RAIN/LIGHTNING (implemented with preexisting code)
+ * @author   Werner Moecke
+ * @version  V4.0
+ * @date     22-July-2016
+ *
+ * @extended SparkPixels.ino:
+ *		Refactored code to retrieve next random mode in runDemo(); similar logic
+ *		applied to iftttWeather() on exit;
+ *      Added an if() statement to SetMode() in order to control when to store
+ *      the demo mode's last state when IFTTT mode is triggered;
+ *      Also added an if() statement to setNewMode() in order to better control
+ *      when to update the previousModeID variable.
+ * @author   Werner Moecke
+ * @version  V3.93b
+ * @date     10-April-2016 ~ 15-April-2016
+ *
+ * @extended SparkPixels.ino:
  *		Updating the EEPROM storage area with EEPROM.write() in CUBE PAINTER;
  *		We're not using EEPROM.put() due to huge performance impact in updating the cube
  * @author   Werner Moecke
@@ -224,84 +253,91 @@
  ******************************************************************************/
 SYSTEM_THREAD(ENABLED);
 
-#include "neopixel/neopixel.h"
+#include "neopixel.h"
 #include <math.h>
 #include <string>
 #include <bitset>
-#define ON                      1
-#define OFF                     0
-
-//Global Defines
-#define MAX_PUBLISHED_STRING_SIZE   622     //defined by Particle Industries
-#define TIME_ZONE_OFFSET            -3		//The offset to obtain your region's time correctly
-#define CLAMP_255(v) (v > 255 ? 255 : (v < 0 ? 0 : v))
 
 //NEOPIXEL Defines
 #define PIXEL_CNT               512
 #define PIXEL_PIN               D0
 #define PIXEL_TYPE              WS2812B
 
+//Global Defines
+#define ON                      1
+#define OFF                     0
+#define BPP                     3       //3 bytes per pixel or 24bit (RGB)
+#define SIDE                    8		//8x8x8 Cube size
+#define PI						3.1415926535
+#define REFRESH_CONTROL         D1
+#define PIXELS_PER_PANEL        (PIXEL_CNT / SIDE)
+#define MAX_PUBLISHED_STRING_SIZE	622	//defined by Particle Industries
+
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(PIXEL_CNT, PIXEL_PIN, PIXEL_TYPE);
 
 /* ======================= ADD NEW MODE ID HERE. ======================= */
 // Mode ID Defines
-const int STANDBY                     = 0;  //credit: Kevin Carlborg
-const int NORMAL                      = 1;  //credit: Kevin Carlborg
-const int COLORALL                    = 2;  //credit: Kevin Carlborg
-const int CHASER                      = 3;  //credit: Kevin Carlborg
-const int ZONE                        = 4;  //credit: Kevin Carlborg
-const int COLORPULSE                  = 5;  //credit: Werner Moecke
-const int COLORSTRIPES                = 6;  //credit: Werner Moecke
-const int ACIDDREAM                   = 7;  //credit: Werner Moecke
-const int RAINBOW                     = 8;  //credit: Kevin Carlborg
-const int THEATERCHASE                = 9;  //credit: Kevin Carlborg
-const int FROZEN                      = 10; //credit: Kevin Carlborg
-const int COLLIDE                     = 11; //credit: Kevin Carlborg
-const int COLORFADE                   = 12; //credit: Werner Moecke
-const int RAINBOW_BURST               = 13; //credit: Werner Moecke
-const int FLICKER                     = 14; //credit: Werner Moecke
-const int COLORBREATHE                = 15; //credit: Werner Moecke
-const int POLICELIGHTS                = 16; //credit: Werner Moecke
-const int TWOCOLORCHASE               = 17; //credit: Werner Moecke
-const int LISTENER                    = 18; //credit: Werner Moecke
-const int ZONECHASER                  = 19; //credit: Werner Moecke
-const int SPECTRUM                    = 20; //credit: Alex Hornstein, Werner Moecke (extra settings)
-const int SQUARRAL                    = 21; //credit: Alex Hornstein
-const int PLASMA                      = 22; //credit: Alex Hornstein, Werner Moecke (speed settings)
-const int WARMFADE                    = 23; //credit: Kevin Carlborg
-const int CHRISTMASTREE               = 24; //credit: Kevin's friggin' xmas tree - there, have it!
-const int CHRISTMASLIGHTS             = 25; //credit: Kevin Carlborg, Werner Moecke (L3D Cube port)
-const int CHRISTMASWREATH             = 26; //credit: Kevin Carlborg, Werner Moecke (L3D Cube port, extra colors)
-const int TEXT                        = 27; //credit: Alex Hornstein, Hans-Peter "Hape", Werner Moecke (C++ port, extra settings)
-const int WHIRLWIND                   = 28; //credit: Bill Marrs
-const int CUBES                       = 29; //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
-const int RAIN                        = 30; //credit: Kevin Carlborg, Werner Moecke (Matrix Mode)
-const int CHEERLIGHTS                 = 31; //credit: Alex Hornstein, Werner Moecke (stability fixes, extra transition effects)
-const int FILLER                      = 32; //credit: Werner Moecke (based on idea by Alex Hornstein)
-const int CUBE_PAINTER                = 33; //credit: Werner Moecke (based on idea by Alex Hornstein)
-const int CUBE_CLASSICS               = 34; //credit: http://www.instructables.com/id/Led-Cube-8x8x8/, Kevin Carlborg (L3D Cube port)
-const int IFTTTWEATHER                = 35; //credit: Kevin Carlborg, Werner Moecke (code improvements)
-const int DIGI                        = 36; //credit: Kevin Carlborg
-const int CLOCK                       = 37; //credit: Werner Moecke (based on Dennis Williamson's "Clock" viz: http://cubetube.org/gallery/newestFirst/258/)
-const int BITCLOCK                    = 38; //credit: "lapentab", Werner Moecke (Processing language (java) to C++ conversion)
+const uint8_t STANDBY                     = 0;  //credit: Kevin Carlborg
+const uint8_t NORMAL                      = 1;  //credit: Kevin Carlborg
+const uint8_t COLORALL                    = 2;  //credit: Kevin Carlborg
+const uint8_t CHASER                      = 3;  //credit: Kevin Carlborg
+const uint8_t ZONE                        = 4;  //credit: Kevin Carlborg
+const uint8_t COLORPULSE                  = 5;  //credit: Werner Moecke
+const uint8_t COLORSTRIPES                = 6;  //credit: Werner Moecke
+const uint8_t ACIDDREAM                   = 7;  //credit: Werner Moecke
+const uint8_t RAINBOW                     = 8;  //credit: Kevin Carlborg
+//const uint8_t THEATERCHASE                = 9;  //credit: Kevin Carlborg
+//const uint8_t FROZEN                      = 10; //credit: Kevin Carlborg
+const uint8_t COLLIDE                     = 9; //credit: Kevin Carlborg
+const uint8_t COLORFADE                   = 10; //credit: Werner Moecke
+const uint8_t RAINBOW_BURST               = 11; //credit: Werner Moecke
+const uint8_t FLICKER                     = 12; //credit: Werner Moecke
+const uint8_t COLORBREATHE                = 13; //credit: Werner Moecke
+const uint8_t POLICELIGHTS                = 14; //credit: Werner Moecke
+//const uint8_t TWOCOLORCHASE               = 17; //credit: Werner Moecke
+const uint8_t LISTENER                    = 15; //credit: Werner Moecke
+const uint8_t ZONECHASER                  = 16; //credit: Werner Moecke
+const uint8_t SPECTRUM                    = 17; //credit: Alex Hornstein, Werner Moecke (extra settings)
+const uint8_t SQUARRAL                    = 18; //credit: Alex Hornstein
+const uint8_t PLASMA                      = 19; //credit: Alex Hornstein, Werner Moecke (speed settings)
+const uint8_t WARMFADE                    = 20; //credit: Kevin Carlborg
+//const uint8_t CHRISTMASTREE               = 24; //credit: Kevin's friggin' xmas tree - there, have it!
+//const uint8_t CHRISTMASLIGHTS             = 21; //credit: Kevin Carlborg, Werner Moecke (L3D Cube port)
+//const uint8_t CHRISTMASWREATH             = 22; //credit: Kevin Carlborg, Werner Moecke (L3D Cube port, extra colors)
+const uint8_t TEXT                        = 21; //credit: Alex Hornstein, Hans-Peter "Hape", Werner Moecke (C++ port, extra settings)
+const uint8_t WHIRLWIND                   = 22; //credit: Bill Marrs
+const uint8_t CUBES                       = 23; //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
+const uint8_t RAIN                        = 24; //credit: Kevin Carlborg, Werner Moecke (Matrix Mode)
+const uint8_t CHEERLIGHTS                 = 25; //credit: Alex Hornstein, Werner Moecke (stability fixes, extra transition effects)
+const uint8_t FILLER                      = 26; //credit: Werner Moecke (based on idea by Alex Hornstein)
+const uint8_t CUBE_PAINTER                = 27; //credit: Werner Moecke (based on idea by Alex Hornstein)
+const uint8_t CUBE_CLASSICS               = 28; //credit: http://www.instructables.com/id/Led-Cube-8x8x8/, Kevin Carlborg (L3D Cube port)
+const uint8_t IFTTTWEATHER                = 29; //credit: Kevin Carlborg, Werner Moecke (code improvements)
+const uint8_t DIGI                        = 30; //credit: Kevin Carlborg
+const uint8_t CLOCK                       = 31; //credit: Werner Moecke (based on Dennis Williamson's "Clock" viz: http://cubetube.org/gallery/newestFirst/258/)
+const uint8_t BITCLOCK                    = 32; //credit: "lapentab", Werner Moecke (Processing language (java) to C++ conversion)
+const uint8_t ACIDRAIN                    = 33; //credit: Werner Moecke (inspired by Kevin Darrah's "Rain" and based on Alex Hornstein's "Purple Rain")
+const uint8_t GOLDRAIN                    = 34; //credit: Werner Moecke (based on Alex Hornstein's "Purple Rain")
+const uint8_t LIGHTNING                   = 35; //credit: Bill Marrs
 
 /* ======================= ADD NEW AUX SWITCH ID HERE. ======================= */
 // AUX SWITCH ID Defines
-const int ASO = 0;
+const uint8_t ASO = 0;
+const uint8_t RLM = 1;
 
-const int MAX_NUM_COLORS = 6;
-const int MAX_NUM_SWITCHES = 4;
+const uint8_t MAX_NUM_COLORS = 6;
+const uint8_t MAX_NUM_SWITCHES = 4;
 
 typedef struct modeParams {
-   int	modeId;
+   uint8_t	modeId;
    char	modeName[20];
-   int	numOfColors;       //Tell the android app home many colors to expect. Max number is 6
-   int  numOfSwitches;
+   uint8_t	numOfColors;       //Tell the android app home many colors to expect. Max number is 6
+   uint8_t  numOfSwitches;
    bool textInput;   
 } modeParams;
 
 typedef struct switchParams {
-   int  modeId;
+   uint8_t  modeId;
    char switch1Title[20];
    char switch2Title[20];
    char switch3Title[20];
@@ -309,7 +345,7 @@ typedef struct switchParams {
 } switchParams;
 
 typedef struct auxSwitchParams {
-    int  auxSwitchId;
+    uint8_t  auxSwitchId;
     bool auxSwitchState;
     char auxSwitchTitle[20];
     char auxSwitchOnName[20];
@@ -372,21 +408,21 @@ bool operator== (const Point& a, const Point& b) {
 
 /** Common colors */
 const Color black           = Color(0x00, 0x00, 0x00);
-const Color grey            = Color(0x92, 0x95, 0x91);
-const Color yellow          = Color(0xff, 0xff, 0x14);
-const Color incandescent    = Color(0xfd, 0xf5, 0xe6);  //This seems closer to incandescent color
-const Color magenta         = Color(0xc2, 0x00, 0x78);  //#FF00FF
-const Color orange          = Color(0xf9, 0x73, 0x06);  //#FFA500
-const Color teal            = Color(0x02, 0x93, 0x86);
-const Color cyan            = Color(0x02, 0xff, 0xff);
-const Color red             = Color(0xe5, 0x00, 0x00);
-const Color brown           = Color(0x65, 0x37, 0x00);
-const Color pink            = Color(0xff, 0x81, 0xc0);
-const Color lightpink       = Color(0xff, 0xc0, 0xcb);
-const Color blue            = Color(0x03, 0x43, 0xdf);
-const Color green           = Color(0x15, 0xb0, 0x1a);
-const Color purple          = Color(0x7e, 0x1e, 0x9c);  //#800080
-const Color white           = Color(0xff, 0xff, 0xff);
+//const Color grey            = Color(0x92, 0x95, 0x91);
+//const Color yellow          = Color(0xff, 0xff, 0x14);
+//const Color incandescent    = Color(0xfd, 0xf5, 0xe6);  //This seems closer to incandescent color
+//const Color magenta         = Color(0xc2, 0x00, 0x78);  //#FF00FF
+//const Color orange          = Color(0xf9, 0x73, 0x06);  //#FFA500
+//const Color teal            = Color(0x02, 0x93, 0x86);
+//const Color cyan            = Color(0x02, 0xff, 0xff);
+//const Color red             = Color(0xe5, 0x00, 0x00);
+//const Color brown           = Color(0x65, 0x37, 0x00);
+//const Color pink            = Color(0xff, 0x81, 0xc0);
+//const Color lightpink       = Color(0xff, 0xc0, 0xcb);
+//const Color blue            = Color(0x03, 0x43, 0xdf);
+//const Color green           = Color(0x15, 0xb0, 0x1a);
+//const Color purple          = Color(0x7e, 0x1e, 0x9c);  //#800080
+//const Color white           = Color(0xff, 0xff, 0xff);
 
 /* ======================= ADD NEW MODE STRUCT HERE. ======================= */
 //modeId and modeName should be the same name to prevent confusion
@@ -400,37 +436,40 @@ modeParams modeStruct[] =
         {  STANDBY,                     "OFF",                  0,          0,      FALSE   },  //credit: Kevin Carlborg
         {  NORMAL,                      "LIGHT",                0,          0,      FALSE   },  //credit: Kevin Carlborg
         {  ACIDDREAM,                   "ACID DREAM",           0,          0,      FALSE   },  //credit: Werner Moecke
+        {  ACIDRAIN,                    "ACID RAIN",            0,          1,      FALSE   },  //credit: Werner Moecke (inspired by Kevin Darrah's "Rain" and based on Alex Hornstein's "Purple Rain")
         {  BITCLOCK,                    "BIT CLOCK",            4,          4,      FALSE   },  //credit: "lapentab", Werner Moecke (Processing language (java) to C++ conversion)
         {  COLORBREATHE,                "BREATHE",              1,          1,      FALSE   },  //credit: Werner Moecke
         {  RAINBOW_BURST,               "BURST",                0,          0,      FALSE   },  //credit: Werner Moecke
         {  CHASER,                      "CHASER",               1,          0,      FALSE   },  //credit: Kevin Carlborg
   		{  CHEERLIGHTS,                 "CHEERLIGHTS",          0,          0,      FALSE   },  //credit: Alex Hornstein, Werner Moecke (stability fixes, extra transition effects)
-        {  CHRISTMASLIGHTS,             "CHRISTMAS LIGHTS",     0,          0,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (L3D Cube port)
-        {  CHRISTMASTREE,               "CHRISTMAS TREE",       0,          3,      FALSE   },  //credit: Kevin's friggin' xmas tree - there, have it!
-        {  CLOCK,                       "CLOCK",                1,          4,      FALSE   },  //credit: Werner Moecke (based on Dennis Williamson's "Clock" viz: http://cubetube.org/gallery/newestFirst/258/)
+        //{  CHRISTMASLIGHTS,             "CHRISTMAS LIGHTS",     0,          0,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (L3D Cube port)
+        //{  CHRISTMASTREE,               "CHRISTMAS TREE",       0,          3,      FALSE   },  //credit: Kevin's friggin' xmas tree - there, have it!
+        {  CLOCK,                       "CLOCK",                3,          4,      FALSE   },  //credit: Werner Moecke (based on Dennis Williamson's "Clock" viz: http://cubetube.org/gallery/newestFirst/258/)
         {  COLLIDE,                     "COLLIDE",              0,          0,      FALSE   },  //credit: Kevin Carlborg
         {  COLORALL,                    "COLOR ALL",            1,          0,      FALSE   },  //credit: Kevin Carlborg
-        {  CHRISTMASWREATH,             "COLOR WREATH",         2,          0,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (L3D Cube port, extra colors)
+        //{  CHRISTMASWREATH,             "COLOR WREATH",         2,          0,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (L3D Cube port, extra colors)
         {  CUBES,                       "CUBES",                4,          4,      FALSE   },  //credit: Alex Hornstein, Werner Moecke (C++ port, extra settings)
         {  CUBE_CLASSICS,               "CUBE CLASSICS",        1,          1,      FALSE   },  //credit: http://www.instructables.com/id/Led-Cube-8x8x8/, Kevin Carlborg (L3D Cube port)
         {  CUBE_PAINTER,                "CUBE PAINTER",         0,          0,      FALSE   },  //credit: Werner Moecke (based on idea by Alex Hornstein)
         {  DIGI,                        "DIGI",                 1,          2,      FALSE   },  //credit: Kevin Carlborg
-        {  TWOCOLORCHASE,               "DUAL CHASE",           2,          0,      FALSE   },  //credit: Werner Moecke
+        //{  TWOCOLORCHASE,               "DUAL CHASE",           2,          0,      FALSE   },  //credit: Werner Moecke
         {  FILLER,                      "FILLER",               3,          1,      FALSE   },  //credit: Werner Moecke (based on idea by Alex Hornstein)
         {  FLICKER,                     "FLICKER",              1,          0,      FALSE   },  //credit: Werner Moecke
-        {  FROZEN,                      "FROZEN",               0,          0,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (flake fading)
+        //{  FROZEN,                      "FROZEN",               0,          0,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (flake fading)
+        {  GOLDRAIN,                    "GOLD RAIN",            0,          1,      FALSE   },  //credit: Werner Moecke (based on Alex Hornstein's "Purple Rain")
         {  IFTTTWEATHER,                "IFTTT",                0,          0,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (code improvements)
+        {  LIGHTNING,                   "LIGHTNING",            0,          0,      FALSE   },  //credit: Bill Marrs
         {  LISTENER,                    "LISTENER",             0,          0,      FALSE   },  //credit: Werner Moecke
         {  PLASMA,                      "PLASMA",               0,          0,      FALSE   },  //credit: Alex Hornstein, Werner Moecke (speed settings)
         {  POLICELIGHTS,                "POLICE",               0,          0,      FALSE   },  //credit: Werner Moecke
         {  COLORPULSE,                  "PULSE",                0,          0,      FALSE   },  //credit: Werner Moecke
-        {  RAIN,                        "RAIN",                 1,          3,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (Matrix Mode)
+        {  RAIN,                        "RAIN",                 1,          4,      FALSE   },  //credit: Kevin Carlborg, Werner Moecke (Matrix Mode)
         {  RAINBOW,                     "RAINBOW",              0,          0,      FALSE   },  //credit: Kevin Carlborg
         {  SQUARRAL,                    "SQUARRAL",             0,          0,      FALSE   },  //credit: Alex Hornstein
         {  SPECTRUM,                    "SPECTRUM",	            0,          2,      FALSE   },  //credit: Alex Hornstein, Werner Moecke (extra settings)
         {  COLORSTRIPES,                "STRIPES",              0,          0,      FALSE   },  //credit: Werner Moecke
-        {  TEXT,                        "TEXT",                 2,          3,      TRUE    },  //credit: Alex Hornstein, Hans-Peter "Hape", Werner Moecke (C++ port, extra settings)
-        {  THEATERCHASE,                "THEATER CHASE",        0,          0,      FALSE   },  //credit: Kevin Carlborg
+        {  TEXT,                        "TEXT",                 2,          4,      TRUE    },  //credit: Alex Hornstein, Hans-Peter "Hape", Werner Moecke (C++ port, extra settings)
+        //{  THEATERCHASE,                "THEATER CHASE",        0,          0,      FALSE   },  //credit: Kevin Carlborg
         {  COLORFADE,                   "TRANSITION",           0,          0,      FALSE   },  //credit: Werner Moecke
         {  WARMFADE,                    "WARM FADE",            0,          0,      FALSE   },  //credit: Kevin Carlborg
         {  WHIRLWIND,                   "WHIRLWIND",            0,          0,      FALSE   },  //credit: Bill Marrs
@@ -442,18 +481,20 @@ switchParams switchTitleStruct[] =
 { 
     /*  modeId           S1Title                S2Title                S3Title                S4Title 
      *  ---------------  ---------------------- ---------------------- ---------------------- ----------------------  */
-	   {  SPECTRUM,      "Smooth",              "Peak Mode",           "",                    ""                     },
-	   {  TEXT,          "Bold Text",           "No Background",       "Black Text",          ""                     },
-	   {  CHRISTMASTREE, "Make it Snow",        "Pulse the Star",      "Lights On",           ""                     },
-	   {  CUBES,         "Fill Cubes",          "Random Colors",       "Bleed Edges",         "Bleed Sides"          },
-	   {  RAIN,          "Random Colors",       "Matrix Mode",         "Fade Bottom",         ""                     },
-	   {  FILLER,        "Random Colors",       "",                    "",                    ""                     },
-	   {  ZONE,          "Loop",                "Random Colors",       "Coord. Colors",       ""                     },
-	   {  DIGI,          "Random Colors",       "Fade In",             "",                    ""                     },
-	   {  CUBE_CLASSICS, "Color Sweep",         "",                    "",                    ""                     },
-	   {  COLORBREATHE,  "Random Colors",       "",                    "",                    ""                     },
-	   {  CLOCK,         "3D Clock",            "24h Format",          "Sweep Colors",        "No Background"        },
-	   {  BITCLOCK,      "24h Format",          "Sweep Line Color",    "Draw Lines",          "Rev. Bitweight"       }
+	   {  SPECTRUM,      "Smooth",              "Peaks",               "",                    ""                     },
+	   {  TEXT,          "Bolden",              "No BG",               "Black Text",          "Sweep BG"			 },
+	   //{  CHRISTMASTREE, "Make it Snow",        "Pulse the Star",      "Lights On",           ""                     },
+	   {  CUBES,         "Fill",                "Sweep BG",            "Bleed Edges",         "Bleed Sides"          },
+	   {  RAIN,          "Sweep BG",            "Matrix Mode",         "Fade Bottom",         "Lightning!"           },
+	   {  FILLER,        "Sweep BG",            "",                    "",                    ""                     },
+	   {  ZONE,          "Loop",                "Sweep BG",            "Lerp",				  ""                     },
+	   {  DIGI,          "Sweep BG",            "Fade In",             "",                    ""                     },
+	   {  CUBE_CLASSICS, "Sweep BG",            "",                    "",                    ""                     },
+	   {  COLORBREATHE,  "Sweep BG",            "",                    "",                    ""                     },
+	   {  CLOCK,         "3D Clock",            "24h/12h",             "Sweep BG",            "No BG"                },
+	   {  BITCLOCK,      "24h/12h",             "Sweep Lines",         "Draw Lines",          "Rev. Bitweight"       },
+	   {  ACIDRAIN,      "Sound Reactive",      "",                    "",                    ""                     },
+	   {  GOLDRAIN,      "Sound Reactive",      "",                    "",                    ""                     }
 };
 
 /* ======================= ADD NEW AUX SWITCH STRUCT HERE. ======================= 
@@ -468,13 +509,22 @@ auxSwitchParams auxSwitchStruct[] =
 { 
      /*    auxSwitchId      auxSwitchState  auxSwitchTitle         auxSwitchOnTitle       auxSwitchOffTitle    
      *     ---------------  --------------  ---------------------- ---------------------- ----------------------*/
-	    {  ASO,             TRUE,          "Auto Shut Off",       "ON",                  "OFF"                } 
+	    {  ASO,             TRUE,			"Auto Shut Off",	   "ON",                  "OFF"                },
+	    {  RLM,             FALSE,			"Remember Last Mode?", "YES",                 "NO"				   }
 	    //{  LIGHTSENSOR,     TRUE,           "Brightness Control",  "Light Sensor",        "App Controlled"     }, //Shown here as an example
 };
+
+/* ========== AUTO SHUT OFF (ASO) Defines for Cloud Function: Function ========== */
+/*#define ASO_CMD_ON              "ASO_ON"
+#define ASO_CMD_OFF             "ASO_OFF"
+#define ASO_CMD_STATUS          "ASO_STATUS"
+#define ASO_STATUS_OFF          2000
+#define ASO_STATUS_ON           2001*/
 
 /* ========================= Local Aux Switch variables =========================== */
 bool autoShutOff;   //Should we shut off the lights at certain times? This is toggled from the app
                     //Configure the Auto Shut Off times in the loop() function 
+bool rememberLastMode;   //Should we remember the last mode ran? This is toggled from the app and kept in EEPROM
 
 //Preset speed constants
 const int speedPresets[] = {120, 100, 80, 70, 50, 30, 20, 10, 1};  //in mSec, slow to fast       
@@ -482,135 +532,156 @@ const int speedPresets[] = {120, 100, 80, 70, 50, 30, 20, 10, 1};  //in mSec, sl
 //Time Interval constants            hh*mm*ss*ms    
 unsigned long oneMinuteInterval =     1*60*1000;	//Read temp every minute
 unsigned long twoMinuteInterval =     2*60*1000;	//Change mode every 2 minutes in demo
-unsigned long oneHourInterval =       1*60*60*1000; //auto off in 1 hr when night time
-unsigned long oneDayInterval = 	     24*60*60*1000; //time sync interval - 24 hours
-unsigned long iftttWeatherInterval = 10*60*1000;    //revert back to last mode for IFTTT Weather
-unsigned long start;
+//unsigned long oneHourInterval =       1*60*60*1000; //auto off in 1 hr when night time
+//unsigned long oneDayInterval = 	     24*60*60*1000; //time sync interval - 24 hours
+//unsigned long iftttWeatherInterval = 10*60*1000;    //revert back to last mode for IFTTT Weather
+//unsigned long start;
 
 //Program Flags
-int currentModeID;  //This is the ID of the current mode selected - used in the case statement
-int lastModeID;
 bool run;           //Use this for modes that don't need to loop. Set the color, then stop sending commands to the pixels
 bool stop;          //Use this to break out of sequence loops when changing to a new mode
 bool demo;          //Use this to enable/disable the demo sequence playback 
-bool isFirstLap;
 bool reboot;        //Use this to flag when a System.reset() is requested by the phone app.
 
 //Misc variables
-int speed; //not to be confused with speedIndex below, this is the local speed (delay) value
 unsigned long previousMillis = 0;
 unsigned long lastCommandReceived = 0;
 unsigned long lastSync = 0;
 unsigned long lastModeSet=-twoMinuteInterval;   //Registers last time a mode has been changed in Demo mode
 uint32_t defaultColor; //The NORMAL mode color
-uint32_t color1;
-uint32_t color2;
-uint32_t color3;
-uint32_t color4;
-uint32_t color5;
-uint32_t color6;
-uint32_t c1, c2;
-uint8_t colorWheel;
-//Variables to hold the switch settings to each mode requiring them
+uint32_t color1, color2, color3, color4, color5, color6;
+
+//Variables to hold the settings to each mode requiring them
 bool switch1, switch2, switch3, switch4;
 bool lastSwitchState[4];
+bool lastDemo;
+int timeZone;
+uint8_t currentModeID;  //This is the ID of the current mode selected - used in the case statement
+uint8_t previousModeID;
 int lastBrightness;
-int lastRand = 0;
-int lastLastRand = 0;
-int timeZone = TIME_ZONE_OFFSET;
 Color lastCol;
+uint32_t lastColors[6];
 
 //Particle Cloud Variables
-#define TEXT_LENGTH             64
-//int wifi = 0;           //used for general info and setup
-int tHour = 0;          //used for general info and setup
-int speedIndex;         //Let the cloud know what speed preset we are using
-int brightness;         //How bright do we want these things anyway
+#define TEXT_LENGTH				64
+//int wifi = 0;         //used for general info and setup
+uint8_t tHour = 0;          //used for general info and setup
+int speed, brightness;		//speed not to be confused with speedIndex below, this is the local speed (delay) value
+int speedIndex;				//Let the cloud know what speed preset we are using
+bool varsRegistered = FALSE;        //Flags if we have all of our cloud variables registered successfully
 char modeNameList[MAX_PUBLISHED_STRING_SIZE] = "None";  //Holds all mode info comma delimited. Use this to populate the android app
 char modeParamList[MAX_PUBLISHED_STRING_SIZE] = "None";
 char auxSwitchList[MAX_PUBLISHED_STRING_SIZE] = "None";
 char currentModeName[TEXT_LENGTH] = "None";  //Holds current selected mode
-char textInputString[TEXT_LENGTH];           //Holds the Text for any mode needing a test input - only useful for a Neopixel Matrix
 char debug[200];                    //We might want some debug text for development
-bool varsRegistered = FALSE;        //Flags if we have all of our cloud variables registered successfully
 
-/* ======================= Mode-specific Defines ======================= */
-//ZONE mode Start and End Pixels
-int zone1Start = 0;
-int zone1End   = (PIXEL_CNT / 4) - 1;   //127
-int zone2Start = zone1End + 1;          //128
-int zone2End   = (zone2Start * 2) - 1;  //255
-int zone3Start = PIXEL_CNT / 2;         //256
-int zone3End   = zone3Start + zone1End; //383
-int zone4Start = zone3End + 1;          //384
-int zone4End   = PIXEL_CNT - 1;			//511
-
+/* ======================== Mode-specific Definitions ======================== */
 //CHASER mode specific Start and End Pixels, re-use some from ZONE mode
 //int ChaserZone3Section1End   = 177;
 //int chaserZone3Section2Start = 189;
-#define CHASER_LENGTH		 PIXEL_CNT
+//#define CHASER_LENGTH			PIXEL_CNT
 
-//FROZEN mode defines
-int randomFlakes[(int)(PIXEL_CNT*0.1)]; // holds the snowflake positions no more than10% of total number of pixels
-Color snowFlakeColor;
+/* ========================= FROZEN mode Definitions ========================= */
+//int randomFlakes[(int)(PIXEL_CNT*0.1)]; // holds the snowflake positions no more than10% of total number of pixels
+//Color snowFlakeColor;
 
-// Some effects can render on different axis
-// for example send pixels along an axis
-// for better readability, we use the following predefined constants
-#define AXIS_X 0x78
-#define AXIS_Y 0x79
-#define AXIS_Z 0x7a
+/* ====================== EEPROM Addressing Definitions ====================== */
+/************************
+ *      constants       *
+ ************************/
+#define PAINTER_START_ADDR		0		// start address for the drawing buffer in CUBE_PAINTER
+#define MAX_EEPROM_SIZE			2047	// the maximum available space in EEPROM storage (Photon)
+#define TEXT_START_ADDR			PIXEL_CNT * BPP + 1									// offset for the text store in TEXT mode
+#define SWITCHES_START_ADDR		TEXT_START_ADDR + TEXT_LENGTH + 1					// offset for the lastSwitchState store
+#define COLORS_START_ADDR		SWITCHES_START_ADDR + sizeof(lastSwitchState) + 1	// offset for the lastColors store
+#define LASTMODE_START_ADDR		COLORS_START_ADDR + sizeof(lastColors) + 1			// offset for the currentModeID store
+#define SPEED_START_ADDR		LASTMODE_START_ADDR + sizeof(int) + 1               // offset for the speedIndex store
+#define BRIGHT_START_ADDR		SPEED_START_ADDR + sizeof(int) + 1                  // offset for the brightness store
+#define AUXSW_START_ADDR		BRIGHT_START_ADDR + sizeof(int) + 1                 // offset for the auxSwitchStruct switch store
 
-/* ========================== LISTENER mode defines ========================== */
-UDP Udp;        //an UDP instance to let us receive packets over UDP
-int countdown;  // Keep a watchdog count to 100 max failed UDP buffer read attempts
-//some tpm2.net constants
-#define TPM2NET_LISTENING_PORT  65506
+/* ========================= LISTENER mode Definitions ======================= */
+/************************
+ *      constants       *
+ ************************/
+// Package size we expect. The footer byte is included here!
 #define TPM2NET_HEADER_SIZE     6
+#define EXPECTED_PACKET_SIZE    (PIXELS_PER_PANEL * BPP + TPM2NET_HEADER_SIZE) + 1  // 198 Data bytes + footer byte
+//some tpm2.net constants
 #define TPM2NET_HEADER_IDENT    0x9C
 #define TPM2NET_CMD_DATAFRAME   0xDA
-#define TPM2NET_CMD_COMMAND     0xC0
-#define TPM2NET_CMD_ANSWER      0xAC
-#define TPM2NET_FOOTER_IDENT    0x36
-#define TPM2NET_PACKET_TIMEOUT  0xFA    // 1/4 of a second
-#define NR_OF_PANELS            8       // 8x8x8 Cube
-#define PIXELS_PER_PANEL        (PIXEL_CNT / NR_OF_PANELS)
-#define BPP                     3       // 3 bytes per pixel or 24bit (RGB)
-// Package size we expect. The footer byte is included here!
-#define EXPECTED_PACKET_SIZE    (PIXELS_PER_PANEL * BPP + TPM2NET_HEADER_SIZE) + 1  // 198 Data bytes + footer byte
+//#define TPM2NET_CMD_COMMAND     0xC0
+//#define TPM2NET_CMD_ANSWER      0xAC
+//#define TPM2NET_FOOTER_IDENT    0x36
+//#define TPM2NET_PACKET_TIMEOUT  0xFA	// 1/4 of a second
 
-/* ======================= AUDIO SPECTRUM mode defines ======================= */
+/************************
+ *   global variables   *
+ ************************/
+UDP Udp;			//an UDP instance to let us receive packets over UDP
+uint8_t countdown;	// Keep a watchdog count to 100 max failed UDP buffer read attempts
+char data[EXPECTED_PACKET_SIZE];
+
+/************************
+ * function prototypes  *
+ ************************/
+void listen(void);
+
+/* ====================== AUDIO SPECTRUM mode Definitions ==================== */
+/************************
+ *      constants       *
+ ************************/
 #define MICROPHONE              12
 #define GAIN_CONTROL            11
-#define SMOOTH_SW               D2
-#define MODE_BT                 D3
-#define SIDE                    NR_OF_PANELS // 8
-#define TRAIL_LENGTH            50
+//#define SMOOTH_SW               D2
+//#define MODE_BT                 D3
 #define SAMPLES                 2048
 #define M                       4   // If the M value changes, then the 'ARRAY_SIZE' constant also needs
 #define ARRAY_SIZE              16  // to be changed to reflect the result of the formula: pow(2,M)
 #define INPUTLEVEL              63  // This sets the sensitivity for the onboard AGC circuit (0-255); the higher, the more sensitive
-bool smooth, dotMode;
+
+/************************
+ *   global variables   *
+ ************************/
+//bool smooth, dotMode;
 float real[ARRAY_SIZE];             //[(int)pow(2,M)]
 float imaginary[ARRAY_SIZE];        //[(int)pow(2,M)]
-float maxVal=8;
+float maxVal=1000;
 
-/* ========================= Text Defines / Prototypes ========================= */
-#define TEXT_START_ADDR         (PIXEL_CNT * BPP) + 1
-char message[TEXT_LENGTH]=" ";
-int thickness=0;
-int whichTextMode = 0;
+/************************
+ * function prototypes  *
+ ************************/
+void FFTJoy(void);
+short FFT(short int dir,int m,float *x,float *y);
+
+/* =========================== Text mode Definitions ========================= */
+/************************
+ *   global variables   *
+ ************************/
+char message[TEXT_LENGTH];
+char textInputString[TEXT_LENGTH];           //Holds the Text for any mode needing a text input - only useful for a Neopixel Matrix
+uint8_t thickness=0;
+uint8_t whichTextMode = 0;
 float pos=0;
+bool isNewText = FALSE;
+
+/************************
+ * function prototypes  *
+ ************************/
 void showChar(char a, Point p, Color col);
 void marquee(String text, float pos, Color col);
+void showText(uint32_t color1, uint32_t color2);
+void textSpin(uint32_t color1, uint32_t color2);
 void showMarqueeChar(char a, int pos, Color col);
+void textScroll(uint32_t color1, uint32_t color2);
+void textMarquee(uint32_t color1, uint32_t color2);
 void showChar(char a, Point origin, Point angle, Color col);
 void scrollText(String text, Point initialPosition, Color col);
 void scrollSpinningText(String text, Point initialPosition, Color col);
 void showChar(char a, Point origin, Point pivot, Point angle, Color col);
-bool isNewText = FALSE;
 
-/** Font table */
+/************************
+ *      Font table      *
+ ************************/
 unsigned char fontTable[2048] =
 {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00,	// Char 000 (.)
@@ -871,64 +942,130 @@ unsigned char fontTable[2048] =
 	0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00	// Char 255 (.)
 };
 
-/* ========================= RAINBOW BURST mode Defines ========================= */
+/* ====================== RAINBOW BURST mode Definitions ====================== */
+/************************
+ *   global variables   *
+ ************************/
 int idex, ihue; //We define these here as they serve to flag if we need
-                //to blank the cube every time the mode is called
+				//to blank the cube every time the mode is called
 
-/* ============================ SQUARRAL mode Defines =========================== */
-#define TRAIL_LENGTH            50
-int frame;
-int bound;
-int boundInc;
-int squarral_zInc;
+/************************
+ * function prototypes  *
+ ************************/
+void random_burst(void);
+
+/* ======================== SQUARRAL mode Definitions ========================= */
+/************************
+ *      constants       *
+ ************************/
+#define	TRAIL_LENGTH	50
+
+/************************
+ *   global variables   *
+ ************************/
+int frame, bound, boundInc, squarral_zInc;
 bool rainbowColor;
 unsigned char axis;
-Point position, increment, pixel;
 Point trailPoints[TRAIL_LENGTH];
+Point position, increment, pixel;
 
-/* ============================= PLASMA mode Defines ============================ */
+/************************
+ * function prototypes  *
+ ************************/
+void squarral(void);
+
+/* ========================== PLASMA mode Definitions ========================= */
+/************************
+ *   global variables   *
+ ************************/
 float phase, colorStretch;
 
-/* ========== AUTO SHUT OFF (ASO) Defines for Cloud Function: Function ========== */
-/*#define ASO_CMD_ON              "ASO_ON"
-#define ASO_CMD_OFF             "ASO_OFF"
-#define ASO_CMD_STATUS          "ASO_STATUS"
-#define ASO_STATUS_OFF          2000
-#define ASO_STATUS_ON           2001*/
+/************************
+ * function prototypes  *
+ ************************/
+void zPlasma(void);
 
-/* ========================= Transition function defines ======================== */
+/* =========================== Transition Definitions ========================= */
+/************************
+ *      constants       *
+ ************************/
 #define LINEAR                  0
 #define POLAR                   1
 
-/* ========================== SetMode return  Defines  ========================== */
-#define NO_CHANGE               1000
-#define BRIGHTNESS_SET          1001
-#define SPEED_SET               1002
+/************************
+ * function prototypes  *
+ ************************/
+uint8_t clamp(unsigned value, unsigned lowClamp, unsigned highClamp);
+void transitionAll(Color endColor, uint16_t method);
+void transitionOne(Color endColor, uint16_t index, uint16_t method);
+void transitionHelper(Color startColor, Color endColor, uint16_t index, uint16_t method, int16_t numSteps, int16_t step);
+int16_t getTransitionStep(Color startColor, Color endColor, uint16_t method, int16_t numSteps, int16_t step, Color whichColor);
 
-/* ========================= christmasTree mode Defines  ======================== */
-#define PI 3.1415926535
-
-/* =========================== whirlWind mode Defines =========================== */
+/* ======================== Whirlwind mode Definitions ======================== */
+/************************
+ *      constants       *
+ ************************/
 #define CYCLE_INTERVAL          60000 // milliseconds between restart
 #define MAX_DOTS                19
 #define                         MIN_RADI 1
 #define                         MAX_RADI 5
+
+/************************
+ *   global variables   *
+ ************************/
 Color clr[MAX_DOTS];
 float angle[MAX_DOTS];
 float radi[MAX_DOTS];
 float y[MAX_DOTS];
-int arcs = 180; 
-Point center = { 4.5, 4.5, 4.5 };
+int lastRand, lastLastRand;
 unsigned long lastSwap;
+Point center;
 
-/* ============================= Cubes mode Defines ============================= */
-int side, inc, mode;
+/************************
+ * function prototypes  *
+ ************************/
+void whirlWind(void);
+void randomColor(struct Color *clr);
+float randomDecimal(void);
+//float radius(float x, float y, float z);
+
+/* ======================== LIGHTNING mode Definitions ======================= */
+/************************
+ *   global variables   *
+ ************************/
+unsigned long lastLightning, lightningInterval, lastLightningInterval;
+
+/************************
+ * function prototypes  *
+ ************************/
+void lightning(void);
+
+/* ========================== Cubes mode Definitions ========================= */
+/************************
+ *   global variables   *
+ ************************/
+uint8_t side, inc, mode;
 bool flipColor;
 Color cubeCol;
 
-/* ========================= Cheerlights mode defines ======================== */
+/************************
+ * function prototypes  *
+ ************************/
+void cubeInc(void);
+void cubes(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4);
+void drawLine(Point p1, Point p2, Color col);
+void drawCube(Point topLeft, int side, Color col);
+
+/* ======================= Cheerlights mode Definitions ====================== */
+/************************
+ *      constants       *
+ ************************/
 #define POLLING_INTERVAL        3000    // how often the photon polls the cheerlights API
 #define RESPONSE_TIMEOUT        500     // the timeout (in ms) to wait for a response from the cheerlights API
+
+/************************
+ *   global variables   *
+ ************************/
 TCPClient client;       // a TCP instance to let us query the cheerlights API over TCP
 String hostname, path;  // the URL and path to cheerlights' thingspeak directory
 String response;        // the response read from querying cheerlights' thingspeak directory
@@ -939,176 +1076,147 @@ int requestTime, pollTime;
 //Thread* cheerlightsThread;  //https://community.particle.io/t/particle-photon-multi-blink-sample-using-threads/16214/3
 //https://github.com/pipprojects/WM/blob/master/water-meter-2.ino
 
-/* ========================= CUBE PAINTER mode defines ======================= */
-#define MAX_EEPROM_SIZE         2047    // the maximum available space in EEPROM storage (Photon)
-//Color drawingBuffer[PIXEL_CNT];
+/************************
+ * function prototypes  *
+ ************************/
+void cheerlights(void);
+
+/* ======================= CUBE PAINTER mode Definitions ===================== */
+/************************
+ *   global variables   *
+ ************************/
 unsigned char drawingBuffer[PIXEL_CNT*BPP];
 
-/* ============================ CLOCK mode defines =========================== */
-char clockMessage[11]=" ";
-int hrow, hplane;
-int mrow, mplane;
-int srow, splane;
-int seconds, minutes, hours;
+/************************
+ * function prototypes  *
+ ************************/
+int CubePainter(String command);
+
+/* ====================== CLOCK/BIT CLOCK mode Definitions =================== */
+/************************
+ *   global variables   *
+ ************************/
+char clockMessage[11];
+uint8_t hrow, hplane;
+uint8_t mrow, mplane;
+uint8_t srow, splane;
+uint8_t seconds, minutes, hours;
 Point s, m, h;
-Color bg;
-Color scolor, mcolor, hcolor;
-Color hdcolor, mdcolor, sdcolor;
-Color amcolor, pmcolor;
 byte currentBg, nextBg;
 
-static const bool ampm[2][3][2] = {
-    {	// "A":
-        {1, 1},
-        {1, 1},
-        {1, 1}
-    },
-    {	// "P":
-        {1, 1},
-        {1, 1},
-        {1, 0}
-    }
-};
+/************************
+ * function prototypes  *
+ ************************/
+void showClock(void);
+void textClock(void);
+void threeDClock(void);
+void drawCube(int w, int h, int d, Point corner, Color voxelColor);
+void display_digits(int number, int drow, int dplane, Color numcolor);
+void drawLightsFromBinary(int number, int segment, int jitter, Color voxelColor);
+std::string strRev(std::string str);
+std::string integerToBinaryString(int number);
+std::string padTo(std::string str, const size_t num, const char paddingChar);
 
-static const bool digits[10][5][3] = {
-    {	// "0":
-        {1, 1, 1},
-        {1, 0, 1},
-        {1, 0, 1},
-        {1, 0, 1},
-        {1, 1, 1}
-    },
-    {	// "1":
-        {0, 1, 0},
-        {1, 1, 0},
-        {0, 1, 0},
-        {0, 1, 0},
-        {1, 1, 1}
-    },
-    {	// "2":
-        {1, 1, 0},
-        {0, 0, 1},
-        {0, 1, 1},
-        {1, 0, 0},
-        {1, 1, 1}
-    },
-    {	// "3":
-        {1, 1, 0},
-        {0, 0, 1},
-        {1, 1, 0},
-        {0, 0, 1},
-        {1, 1, 0}
-    },
-    {	// "4":
-        {1, 0, 1},
-        {1, 0, 1},
-        {1, 1, 1},
-        {0, 0, 1},
-        {0, 0, 1}
-    },
-    {	// "5":
-        {1, 1, 1},
-        {1, 0, 0},
-        {1, 1, 1},
-        {0, 0, 1},
-        {1, 1, 0}
-    },
-    {	// "6":
-        {0, 1, 1},
-        {1, 0, 0},
-        {1, 1, 1},
-        {1, 0, 1},
-        {1, 1, 1}
-    },
-    {	// "7":
-        {1, 1, 1},
-        {0, 0, 1},
-        {0, 1, 0},
-        {0, 1, 0},
-        {0, 1, 0}
-    },
-    {	// "8":
-        {1, 1, 1},
-        {1, 0, 1},
-        {1, 1, 1},
-        {1, 0, 1},
-        {1, 1, 1}
-    },
-    {	// "9":
-        {1, 1, 1},
-        {1, 0, 1},
-        {1, 1, 1},
-        {0, 0, 1},
-        {1, 1, 0}
-    }
-};
+/* ====================== CUBE CLASSICS mode Definitions ===================== */
+/************************
+ *      constants       *
+ ************************/
+#define AXIS_X	0x78
+#define AXIS_Y	0x79
+#define AXIS_Z	0x7a
 
-/* ========================== BIT CLOCK mode defines ========================= */
-// Colors of the hour digits
-Color hourTensColor, hourOnesColor;
-// Colors of the minute digits
-Color minuteTensColor, minuteOnesColor;
-// Colors of the second digits
-Color secondTensColor, secondOnesColor;
-// This is for padding, it is set automatically later.
-int jitter;
-
-
-/* ============================ Required Prototypes ============================= */
-int showPixels(void);
-int hexToInt(char val);
-int antipodal_index(int i);
-int SetASO(String command);
-int setNewMode(int newMode);
-int updateAuxSwitches(int id);
-int collapsingSides(Color col);
-int getModeIndexFromID(int id);
-int randomPixelFill(uint32_t c);
-int isValidMode(String newMode);
-int getAuxSwitchIndexFromID(int id);
-int stackingRope(int mode, Color col);
-int getModeIndexFromName(String name);
+/************************
+ * function prototypes  *
+ ************************/
+void runCubeClassics(uint32_t c);
+void setplane_x (int x, Color col);
+void setplane_y (int y, Color col);
+void setplane_z (int z, Color col);
+void setplane (char axis, unsigned char i, Color col);
+//int collapsingSides(Color col);
+int shift(char axis, int direction);
 int ripples (int iterations, Color col);
-int getSwitchTitleStructIndex(int modeId);
+int effect_loadbar(int axis, Color col);
 int spheremove (int iterations, Color col);
+int effect_planboing (int plane, Color col);
 int fireworks (int iterations, int n, Color col);
+int effect_telcstairs_do(int x, int val, Color col);
 int linespin (int iterations, char axis, Color col);
 int sinelines (int iterations, char axis, Color col);
-void fillX(Color col);
-void fillY(Color col);
-void fillZ(Color col);
-void makeModeList(void);    //Added new function to make mode and parameter lists
-void initMicrophone(void);
-void getCheerlights(void);
+int effect_telcstairs (int invert, int val, Color col);
+int stackingRope(int mode, Color col, uint8_t colorWheel);
+int effect_z_updown (int iterations, Color col, uint8_t colorWheel);
+int effect_axis_updown_randsuspend (char axis, int sleep, int invert, Color col);
+int effect_boxside_randsend_parallel (char axis, int origin, int mode, Color col);
+int effect_wormsqueeze (int size, int axis, int direction, int iterations, Color col);
+int draw_positions_axis (char axis, unsigned char positions[64], int invert, Color col);
+int boingboing(uint16_t iterations, unsigned char mode, unsigned char drawmode, Color col);
+int effect_z_updown_move (unsigned char positions[64], unsigned char destinations[64], char axis, Color col, uint8_t colorWheel);
+float distance2d (float x1, float y1, float x2, float y2);
+float distance3d (float x1, float y1, float z1, float x2, float y2, float z2);
+
+/* ========================== ACID/GOLD RAIN Definitions ===================== */
+/************************
+ *      constants       *
+ ************************/
+#define MAX_POINTS            128
+#define MIN_SALVO_SPACING     0
+
+/************************
+ *   type definitions   *
+ ************************/
+typedef struct {
+	Point raindrop;
+  	float speed;
+  	Color color;
+  	bool flipped;
+  	bool dead;
+} raindrop;
+
+typedef struct {
+    raindrop raindrops[MAX_POINTS];
+    bool dead;
+} salvo;
+
+/************************
+ *   global variables   *
+ ************************/
+salvo salvos[SIDE];
+int fadingMax, ledColor;
+long timeAboveThreshhold;
+
+/************************
+ * function prototypes  *
+ ************************/
+void acidRain(void);
+void initSalvos(void);
+void drawSalvos(void);
+void updateSalvos(void);
+void checkMicrohpone(void);
+void launchRain(int amplitude);
+float setNewSpeed(void);
+
+/* ======================= Helper Functions Prototypes ======================= */
+int hexToInt(char val);
+int antipodal_index(int i);
+int randomPixelFill(uint32_t c);
+//int isValidMode(String newMode);
+//void getCheerlights(void);
 //void initCheerLights(void);
 void background(Color col);
 bool isWhiteColor(Color col);
-void makeAuxSwitchList(void);
 void add(Point& a, Point& b);
-void publishCloudVariables(void);
-void resetVariables(int modeIndex);
-void randomColor(struct Color *clr);
 void setPixelColor(Point p, Color col);
 void transition(Color bgcolor, bool loop);
-void drawLine(Point p1, Point p2, Color col);
 void mixVoxel(Point currentPoint, Color col);
 void fadeInToColor(uint32_t index, Color col);
-void random_seed_from_cloud(unsigned int seed);     //Disable random seed from the cloud 
 void fadeOutFromColor(uint32_t index, Color col);
-void drawCube(Point topLeft, int side, Color col);
 void setPixelColor(int x, int y, int z, Color col);
-void transitionAll(Color endColor, uint16_t method);
 void arrayShuffle(int arrayToShuffle[], int arraySize);
-void transitionOne(Color endColor, uint16_t index, uint16_t method);
+void fadeSmooth(char lowerLim, char upperLim, float scaleFactor);
 void drawSolidHorizontalCircle(int xOrigin, int yOrigin, int z, int radius, Color col);
 void drawHollowHorizontalCircle(int xOrigin, int yOrigin, int z, int radius, Color col, bool rndColor);
-void transitionHelper(Color startColor, Color endColor, uint16_t index, uint16_t method, int16_t numSteps, int16_t step);
-bool isThereEnoughRoomInModeParamList(int textSize);
-float squareRoot(float x);
-float randomDecimal(void);
-float radius(float x, float y, float z);
-float distance2d (float x1, float y1, float x2, float y2);
-float distance3d (float x1, float y1, float z1, float x2, float y2, float z2);
+//float squareRoot(float x);
 Color getPixelColor(Point p);
 Color getPixelColor(int index);
 Color complement(Color original);
@@ -1118,86 +1226,61 @@ Color fadeColor(Color col, float scaleFactor);
 uint8_t fadeSqRt(float value);
 uint8_t fadeSquare(float value);
 uint8_t fadeLinear(float value);
-uint8_t clamp(unsigned value, unsigned lowClamp, unsigned highClamp);
-int16_t getTransitionStep(Color startColor, Color endColor, uint16_t method, int16_t numSteps, int16_t step, Color whichColor);
 uint32_t getHighestValFromRGB(Color col);
 uint32_t Wheel(byte WheelPos, float opacity=1.0);
 uint32_t colorMap(float val, float minVal, float maxVal);
 uint32_t lerpColor(uint32_t c1, uint32_t c2, uint32_t val, uint32_t minVal, uint32_t maxVal);
-std::string strRev(std::string str);
-std::string integerToBinaryString(int number);
-std::string padTo(std::string str, const size_t num, const char paddingChar);
 
-/* ======================= Spark Pixel Prototypes =============================== */
-int CubePainter(String command);
-int shift (char axis, int direction);
-int effect_loadbar(int axis, Color col);
-int effect_planboing (int plane, Color col);
-int effect_z_updown (int iterations, Color col);
-int effect_telcstairs_do(int x, int val, Color col);
-int effect_telcstairs (int invert, int val, Color col);
-int colorZone(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4, bool loop);
-int effect_axis_updown_randsuspend (char axis, int sleep, int invert, Color col);
-int effect_boxside_randsend_parallel (char axis, int origin, int mode, Color col);
-int effect_wormsqueeze (int size, int axis, int direction, int iterations, Color col);
-int draw_positions_axis (char axis, unsigned char positions[64], int invert, Color col);
-int boingboing(uint16_t iterations, unsigned char mode, unsigned char drawmode, Color col);
-int effect_z_updown_move (unsigned char positions[64], unsigned char destinations[64], char axis, Color col);
-void FFTJoy(void);
-void frozen(void);
-void listen(void);
+/* ========================= Spark Pixel Prototypes ========================== */
+//void frozen(void);
 void collide(void);
-void cubeInc(void);
 void rainbow(void);
 void runMode(void);
 void runDemo(void);
-void zPlasma(void);
-void squarral(void);
 void warmFade(void);
-void textClock(void);
-void whirlWind(void);
 void cycleLerp(void);
-void showClock(void);
 void color_fade(void);
 void colorPulse(void);
-void modeButton(void);
-void threeDClock(void);
-void cheerlights(void);
-void smoothSwitch(void);
-void colorStripes(void);
-void random_burst(void);
-void rainbowCycle(void);
-void christmasTree(void);
-void christmasLights(void);
-void digi(uint32_t color1);
-void police_light_strobo(void);
-void theaterChaseRainbow(void);
+void fillX(Color col);
+void fillY(Color col);
+void fillZ(Color col);
 void rain(uint32_t c);
+//void modeButton(void);
+//void smoothSwitch(void);
+void colorStripes(void);
+void rainbowCycle(void);
+void makeModeList(void);    //Added new function to make mode and parameter lists
+//void christmasTree(void);
+//void christmasLights(void);
 void flicker(uint32_t c);
+void initMicrophone(void);
+void digi(uint32_t color1);
+void makeAuxSwitchList(void);
 void colorChaser(uint32_t c);
 void iftttWeather(uint32_t c);
-void runCubeClassics(uint32_t c);
-void setplane_x (int x, Color col);
-void setplane_y (int y, Color col);
-void setplane_z (int z, Color col);
+void police_light_strobo(void);
+void publishCloudVariables(void);
+//void theaterChaseRainbow(void);
+void resetVariables(int modeIndex);
 void pulse_oneColorAll(uint32_t color1);
-void showText(uint32_t color1, uint32_t color2);
-void textSpin(uint32_t color1, uint32_t color2);
-void textScroll(uint32_t color1, uint32_t color2);
-void findRandomSnowFlakesPositions(int numFlakes);
+//void findRandomSnowFlakesPositions(int numFlakes);
+void random_seed_from_cloud(unsigned int seed);     //Disable random seed from the cloud 
 void flipVoxel(int x, int y, int z, Color newCol);
 void filler(uint32_t c1, uint32_t c2, uint32_t c3);
-void textMarquee(uint32_t color1, uint32_t color2);
-void setplane (char axis, unsigned char i, Color col);
-void twoColorChaser(uint32_t color1, uint32_t color2);
-void christmasWreath(uint32_t color1, uint32_t color2);
+//void twoColorChaser(uint32_t color1, uint32_t color2);
+//void christmasWreath(uint32_t color1, uint32_t color2);
 void cubeGreeting(int textMode, int frameCount, float pos);
-void cubes(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4);
-void drawCube(int w, int h, int d, Point corner, Color voxelColor);
-void drawLightsFromBinary(int number, int segment, Color voxelColor);
-void display_digits(int number, int drow, int dplane, Color numcolor);
 void colorZoneChaser(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4);
-short FFT(short int dir,int m,float *x,float *y);
+int showPixels(void);
+int SetASO(String command);
+int setNewMode(int newMode);
+int updateAuxSwitches(int id);
+int getModeIndexFromID(int id);
+int getAuxSwitchIndexFromID(int id);
+int getModeIndexFromName(String name);
+int getSwitchTitleStructIndex(int modeId);
+int colorZone(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4, bool loop);
+bool isThereEnoughRoomInModeParamList(int textSize);
 
 
 void setup() {
@@ -1205,44 +1288,35 @@ void setup() {
     pinMode(PIXEL_PIN, OUTPUT);
 
 	//Initialize
-    color1 = 0;
-    color2 = 0;
-    color3 = 0;
-    color4 = 0;
-    speedIndex = 5;
-    speed = speedPresets[speedIndex];
-    brightness = 20 * (255 * .01);	//Scale 0-100 to 0-255;
-  	lastBrightness = brightness;
-    run = TRUE;                     //was: FALSE;
-    stop = FALSE;
-    demo = TRUE;
-    switch1 = lastSwitchState[0] = FALSE;
-    switch2 = lastSwitchState[1] = FALSE;
-    switch3 = lastSwitchState[2] = FALSE;
-    switch4 = lastSwitchState[3] = FALSE;
-    autoShutOff = FALSE;    //Initialize auto shut off mode variable
-    reboot = FALSE;         //Initialize reboot request flag variable
-	currentModeID = getModeIndexFromID(NORMAL);
-	defaultColor = strip.Color(incandescent.red, incandescent.green, incandescent.blue);
-	snowFlakeColor = getColorFromInteger(0xFFFFFF);
 	lastSync = lastCommandReceived = previousMillis = millis(); //Take a time stamp
+    run = TRUE;                 //was: FALSE;
+    stop = FALSE;
+    demo = lastDemo = TRUE;
+    autoShutOff = FALSE;		//Initialize auto shut off mode variable
+	rememberLastMode = FALSE;	//Initialize remember last mode variable*/
+    reboot = FALSE;				//Initialize reboot request flag variable
+	defaultColor = strip.Color(0xfd, 0xf5, 0xe6);   //This seems closer to incandescent color
+	//snowFlakeColor = getColorFromInteger(0xFFFFFF);
+    //c1 = Wheel(random(random(2, 256), random(2, 256)));
+    //c2 = Wheel(random(random(2, 256), random(2, 256)));
     
-    c1 = Wheel(random(random(2, 256), random(2, 256)));
-    c2 = Wheel(random(random(2, 256), random(2, 256)));
-
 	//Start up the Neopixels
 	strip.begin();
-    
-    //Set time zone
-    if(Particle.connected()) {Time.zone(TIME_ZONE_OFFSET);}
     
     //Clear the mode list and mode param list variables
 	sprintf(modeNameList,"");
 	sprintf(modeParamList,"");
 	sprintf(auxSwitchList,"");
     
+    /***************** DEBUG *****************/
+    //clearEEPROM();    // Pre-0.4.9 firmware
+    //EEPROM.clear();   // >= 0.4.9 firmware
+    /*****************************************/
+	//Check EEPROM area and initialize globals (if values were previoulsy set)
+	initEEPROM();
     //Assemble Spark Cloud available modes variable
     makeModeList();
+    //Assemble Spark Cloud available aux switches variable
     makeAuxSwitchList();
 
     //Get Threads ready
@@ -1250,19 +1324,12 @@ void setup() {
     
     // Initialize audio capture
     initMicrophone();
-    
-    // Set the inputs for the AUDIO SPECTRUM mode
-    pinMode(MODE_BT, INPUT_PULLUP);
-    pinMode(SMOOTH_SW, INPUT_PULLUP);
-    smooth = !digitalRead(SMOOTH_SW);
-    dotMode = digitalRead(MODE_BT);
-    attachInterrupt(MODE_BT, modeButton, FALLING);
-    attachInterrupt(SMOOTH_SW, smoothSwitch, CHANGE);
 }
 
 void publishCloudVariables() {
     varsRegistered = waitFor(Particle.connected, 5000);
     if(varsRegistered) {
+        Time.zone(timeZone);    //Set time zone
         varsRegistered &= Particle.function("Function",     FnRouter);
         varsRegistered &= Particle.function("SetMode",      SetMode);
         varsRegistered &= Particle.function("SetText",      SetText);
@@ -1388,6 +1455,14 @@ int getSwitchTitleStructIndex(int modeId) {
 void makeAuxSwitchList(void) {
     sprintf(auxSwitchList,"");
     for(uint16_t i=0;i<sizeof auxSwitchStruct / sizeof auxSwitchStruct[0];i++) {
+        // Update Aux Switch states from EEPROM
+        int START_ADDRESS = AUXSW_START_ADDR + (auxSwitchStruct[i].auxSwitchId * (sizeof(uint8_t) + 1));
+        if(EEPROM.length() >= (START_ADDRESS + sizeof(uint8_t))) {
+            uint8_t state = EEPROM.read(START_ADDRESS);
+            if(state != 0xFF)
+                auxSwitchStruct[i].auxSwitchState = (state == 1 ? TRUE : FALSE);
+        }
+        
         char cNameBuff[62];
 		if(strlen(auxSwitchList)+strlen(auxSwitchStruct[i].auxSwitchTitle)+strlen(auxSwitchStruct[i].auxSwitchOnName)+strlen(auxSwitchStruct[i].auxSwitchOffName)+9 <= MAX_PUBLISHED_STRING_SIZE) {
             sprintf(cNameBuff,"%i,%s,%s,%s,%i;",auxSwitchStruct[i].auxSwitchId,
@@ -1400,14 +1475,14 @@ void makeAuxSwitchList(void) {
 		else {
 		    sprintf(debug,"Error: auxSwitchList has reached max size limit");
 		}
-		
-		//Update local Aux Switch variables
-		if(0 == updateAuxSwitches(auxSwitchStruct[i].auxSwitchId))
-		    sprintf(debug,"Error: auxSwitch %i failed to update local variable: autoShutOff = %i", auxSwitchStruct[i].auxSwitchId, autoShutOff);
-    }
+
+		// Update local Aux Switch variables
+		if(-1 == updateAuxSwitches(auxSwitchStruct[i].auxSwitchId))
+		    sprintf(debug,"Error: auxSwitch %s failed to update local variable", auxSwitchStruct[i].auxSwitchTitle);
+	}
 }
 
-/**Update local Aux Switch variables
+/** Update local Aux Switch variables
  *  @id the Aux Switch ID to update
  *  @return current state of the switch (0 or 1)
  *  @return -1 if Switch ID was not found
@@ -1416,9 +1491,12 @@ int updateAuxSwitches(int id) {
     switch(id) {
         case ASO:
             return autoShutOff = auxSwitchStruct[getAuxSwitchIndexFromID(id)].auxSwitchState;
+        case RLM:
+            return rememberLastMode = auxSwitchStruct[getAuxSwitchIndexFromID(id)].auxSwitchState;
     }
     return -1;
 }
+
 
 //delay (or speed) is passed 
 void loop() {
@@ -1446,13 +1524,16 @@ void loop() {
         if(!varsRegistered) {publishCloudVariables();}
         
         //Put other timing stuff in here to speed up main loop
-        if (currentMillis - lastSync > oneDayInterval) {
+        //Time sync interval: 24 hours
+        if (currentMillis - lastSync > 24*60*60*1000) {
             // Request time time synchronization from the Spark Cloud
             //sprintf(debug,"Last sync time = %i,", (int)(currentMillis - lastSync));
 			Particle.syncTime();
             lastSync = currentMillis;
         }
-        if (autoShutOff && (currentMillis - lastCommandReceived > oneHourInterval)) {
+        
+        //Auto off in 1 hr when night time
+        if (autoShutOff && (currentMillis - lastCommandReceived > 1*60*60*1000)) {
             //Auto Off Criteria
             //If it's Monday through Friday between 8am and 4pm or between 10pm and 5am any day, turn Off the lights
             if(((Time.weekday() >= 2 && Time.weekday() <=6) && (Time.hour() >= 8 && Time.hour() <= 18)) || (Time.hour() >= 23) || (Time.hour() <= 5)) {
@@ -1472,57 +1553,176 @@ void random_seed_from_cloud(unsigned int seed) {
    // don't do anything with this. Continue with existing seed.
 }
 
+/***************************************************************
+ * NOTE ON MY USE OF THE 'inline' QUALIFIER IN BELOW FUNCTIONS:
+ * Using this provides a slight improvement in speed, with the
+ * cost of adding an extra overhead, because it replaces each 
+ * call with the whole function code; doing so because I know
+ * both functions below will be called ONLY ONCE in the entire
+ * run - clearEEPROM() is only called in DEBUG situations and
+ * initEEPROM() is only called once within setup().
+ ***************************************************************/
 /* Function clearEEPROM() implemented due to the missing clear()
- * function in the EEPROM class (v0.4.9 firmware)
+ * function in the EEPROM class (<= v0.4.9 firmware)
  */
 inline void clearEEPROM(void) {
     for(int i = 0; i < MAX_EEPROM_SIZE; i++)
         EEPROM.write(i, 0xFF);
 }
 
+/* Check EEPROM area and initialize globals (if values were previoulsy set);
+ * otherwise, initializes the respective EEPROM storage area with defaults.
+ * Variables covered: speed, brightness, currentModeID, color1/2/3/4, 
+ * switch1/2/3/4, drawingBuffer[]
+ */
+inline void initEEPROM(void) {
+	//Initialize local flags
+    bool colorsStored, switchesStored, clearBuffer;
+    colorsStored = switchesStored = FALSE;
+    clearBuffer = TRUE;
+	
+	// Initialize textInputString variable
+	SetText("");
+    
+    // Initialize drawingBuffer variable
+    EEPROM.get(PAINTER_START_ADDR, drawingBuffer);
+    for(int i=0; i<(PIXEL_CNT*BPP); i++) {
+        if(drawingBuffer[i] != 0xFF) {
+            clearBuffer = FALSE;
+            break;
+        }
+    }
+    // If there is no color data stored in EEPROM area then blank the entire buffer
+    // (EEPROM.get() returns an array filled with 255, so we need to fill it with 0's)
+    if(clearBuffer) {
+        for(int i=0; i<(PIXEL_CNT*BPP); i++)
+            drawingBuffer[i] = 0;
+        // Initialize EEPROM storage area
+        EEPROM.put(PAINTER_START_ADDR, drawingBuffer);
+    }
+
+	// Initialize speed variable
+	speedIndex = EEPROM.read(SPEED_START_ADDR);
+	if(speedIndex == 0xFF) {
+	    speedIndex = 5; 
+	    // Initialize EEPROM storage area
+	    EEPROM.write(SPEED_START_ADDR, speedIndex);
+    }
+    speed = speedPresets[speedIndex];
+    
+    // Initialize brightness variable
+	brightness = EEPROM.read(BRIGHT_START_ADDR);
+	if(brightness == 0xFF) {
+	    brightness = 20 * (255 * .01);	// Scale 0-100 to 0-255;
+	    // Initialize EEPROM storage area
+        EEPROM.write(BRIGHT_START_ADDR, brightness);
+    }
+  	lastBrightness = brightness;
+    
+    // Initialize currentModeID variable
+	currentModeID = EEPROM.read(LASTMODE_START_ADDR);
+	if(currentModeID == 0xFF) {
+	    currentModeID = getModeIndexFromID(NORMAL);
+	    // Initialize EEPROM storage area
+	    EEPROM.write(LASTMODE_START_ADDR, currentModeID);
+    }
+	previousModeID = currentModeID;
+
+    // Initialize colors
+	EEPROM.get(COLORS_START_ADDR, lastColors);
+	for(int i=0; i<sizeof(lastColors); i++) {
+		if(lastColors[i] != 0xFFFFFFFF) {
+			colorsStored = TRUE;
+			break;
+		}
+	}
+    if(colorsStored) {
+        color1 = lastColors[0];
+        color2 = lastColors[1];
+        color3 = lastColors[2];
+        color4 = lastColors[3];
+        color5 = lastColors[4];
+        color6 = lastColors[5];
+    }
+    else {
+        color1 = lastColors[0] = 0;
+        color2 = lastColors[1] = 0;
+        color3 = lastColors[2] = 0;
+        color4 = lastColors[3] = 0;
+        color5 = lastColors[4] = 0;
+        color6 = lastColors[5] = 0;
+        // Initialize EEPROM storage area
+        EEPROM.put(COLORS_START_ADDR, lastColors);
+    }
+    
+    // Initialize switches
+	EEPROM.get(SWITCHES_START_ADDR, lastSwitchState);
+	for(int i=0; i<sizeof(lastSwitchState); i++) {
+		if(lastSwitchState[i] != 0xFF) {
+			switchesStored = TRUE;
+			break;
+		}
+	}
+	if(switchesStored) {
+        switch1 = lastSwitchState[0];
+        switch2 = lastSwitchState[1];
+        switch3 = lastSwitchState[2];
+        switch4 = lastSwitchState[3];
+	}
+	else {
+        switch1 = lastSwitchState[0] = FALSE;
+        switch2 = lastSwitchState[1] = FALSE;
+        switch3 = lastSwitchState[2] = FALSE;
+        switch4 = lastSwitchState[3] = FALSE;
+        // Initialize EEPROM storage area
+        EEPROM.put(SWITCHES_START_ADDR, lastSwitchState);
+	}
+}
+
 void runDemo() {
-    static int textMode=0, frameCount=0, previousModeID=currentModeID;
+    static int textMode=0, frameCount=0;
     static int endOfMessage=0, cycleCount=-1;
     static float posInc=.2;
-    static bool isTextDone=true;
+    static bool isTextDone=TRUE;
     run = TRUE;
 
     if(stop || !demo) {run = TRUE; demo = FALSE; return;}
 
     if(isTextDone && (millis() - lastModeSet > twoMinuteInterval)) {
-        color1 = Wheel(random(random(2, 256), random(2, 256)));
-        color2 = Wheel(random(random(2, 256), random(2, 256)));
-        color3 = Wheel(random(random(2, 256), random(2, 256)));
-        color4 = Wheel(random(random(2, 256), random(2, 256)));
-        
-        cycleCount++;
-        if(cycleCount >= (sizeof(modeStruct) / sizeof(modeStruct[0]))-4) {
-            srand(analogRead(MICROPHONE));
-            cycleCount = 0;
-            textMode = 0;
+        // Check if the rememberLastMode flag is set; in which case,
+        // we don't set the colors and/or modes randomly
+        if(!rememberLastMode) {
+            color1 = Wheel(random(random(2, 256), random(2, 256)));
+            color2 = Wheel(random(random(2, 256), random(2, 256)));
+            color3 = Wheel(random(random(2, 256), random(2, 256)));
+            color4 = Wheel(random(random(2, 256), random(2, 256)));
+            
+            cycleCount++;
+            if(cycleCount >= (sizeof(modeStruct) / sizeof(modeStruct[0]))-4) {
+                srand(analogRead(MICROPHONE));
+                cycleCount = 0;
+                textMode = 0;
+            }
+            do {
+                int i = random(0, (int)(sizeof(modeStruct) / sizeof(modeStruct[0])));
+                currentModeID = modeStruct[i].modeId;
+            }while((currentModeID == previousModeID)    || 
+                   (currentModeID == NORMAL)            || 
+                   (currentModeID == STANDBY)           || 
+                   (currentModeID == COLORALL)          ||
+                   (currentModeID == TEXT)              || 
+                   (currentModeID == CHEERLIGHTS)       || 
+                   (currentModeID == CUBE_PAINTER)      ||
+                   (currentModeID == IFTTTWEATHER)      ||
+                   (currentModeID == LISTENER));
+            //sprintf(debug, "currentModeID: %d", currentModeID);
+            setNewMode(getModeIndexFromID(currentModeID));
         }
-        do {
-            int i = random(0, (int)(sizeof(modeStruct) / sizeof(modeStruct[0])));
-            currentModeID = modeStruct[i].modeId;
-        }while((currentModeID == previousModeID)                   || 
-               (currentModeID == getModeIndexFromID(NORMAL))       || 
-               (currentModeID == getModeIndexFromID(STANDBY))      || 
-               (currentModeID == getModeIndexFromID(COLORALL))     ||
-               (currentModeID == getModeIndexFromID(TEXT))         || 
-               (currentModeID == getModeIndexFromID(CHEERLIGHTS))  || 
-               (currentModeID == getModeIndexFromID(CUBE_PAINTER)) ||
-               (currentModeID == getModeIndexFromID(IFTTTWEATHER)) ||
-               (currentModeID == getModeIndexFromID(LISTENER)));
-        //sprintf(debug, "currentModeID: %d", currentModeID);
-        
-        previousModeID = currentModeID;
-        setNewMode(currentModeID);
-
 		frameCount = 0;
         isTextDone = FALSE;
         transition(black, true);
     }
-    
+
     while(!isTextDone) {
         if(stop || !demo) {run = TRUE; demo = FALSE; return;}
         if(textMode <= 2) {endOfMessage = 13;}
@@ -1549,8 +1749,13 @@ void runDemo() {
                 lastModeSet = millis();
             } 
             if(textMode <= 4) {
-                delay(800);
-                transition(black, true);
+                // Check if the rememberLastMode flag is set; in which case,
+                // we jump out of the demo mode after the "L - 3 - D" seq.
+                if(textMode == 3)
+                    demo = !rememberLastMode;
+                delay(800); 
+                if(!demo) {setNewMode(getModeIndexFromID(currentModeID));}
+                else {transition(black, true);}
             }
         }
     }
@@ -1560,12 +1765,17 @@ void runDemo() {
 void runMode() {
     switch (currentModeID) {
         case STANDBY:
-		    transitionAll(black,LINEAR);	//transition(black, true);  //colorAll(0, demo);
+            transitionAll(black,LINEAR);	
+		    //transition(black, true);  //colorAll(0, demo);
 			run = FALSE;
 		    break;
 		case ACIDDREAM:
 		    cycleLerp();
 		    break;    
+        case ACIDRAIN:
+        case GOLDRAIN:
+            acidRain();
+            break;
 		case BITCLOCK:
 		    bitClock();
 		    break;
@@ -1575,15 +1785,15 @@ void runMode() {
      	case CHEERLIGHTS:
 		    cheerlights();
 			break;
-		case CHRISTMASLIGHTS:
+		/*case CHRISTMASLIGHTS:
 		    christmasLights();
-		    break;
-		case CHRISTMASTREE:
+		    break;*/
+		/*case CHRISTMASTREE:
 		    christmasTree();
-		    break;
-		case CHRISTMASWREATH:
+		    break;*/
+		/*case CHRISTMASWREATH:
 		    christmasWreath(color1, color2);
-		    break;
+		    break;*/
 		case CLOCK:
 		    showClock();
 		    break;
@@ -1591,7 +1801,9 @@ void runMode() {
 		    collide();
 		    break;
      	case COLORALL:
-	        transitionAll(getColorFromInteger(color1),POLAR);	//transition(getColorFromInteger(color1), false);  //colorAll(color1, demo);
+	        transitionAll(getColorFromInteger(color1),POLAR);	
+	        //transition(getColorFromInteger(color1), false);  
+	        //colorAll(color1, demo);
 	        break;
      	case COLORBREATHE:
 	        pulse_oneColorAll(color1);
@@ -1625,12 +1837,25 @@ void runMode() {
      	case FLICKER:
 		    flicker(color1);
 			break;
-		case FROZEN:
+		/*case FROZEN:
 		    frozen();
-		    break;
+		    break;*/
 		case IFTTTWEATHER:
 		    iftttWeather(color6);
     	    break;
+		case LIGHTNING:
+			if(millis() - lastLightning >= lightningInterval) {
+				lastLightning = millis();
+				srand(lastLightning);
+				do {
+					lightningInterval = oneMinuteInterval / random(24, 76);
+				}while(lastLightningInterval == lightningInterval);
+				lastLightningInterval == lightningInterval;
+				lightning();
+			}
+			else
+				transitionAll(black,LINEAR);
+		    break;
 		case LISTENER:
 		    listen();
 		    break;
@@ -1658,12 +1883,12 @@ void runMode() {
 		case TEXT:
 		    showText(color1, color2);
 		    break;
-		case THEATERCHASE:
+		/*case THEATERCHASE:
 		    theaterChaseRainbow();
 		    break;
 		case TWOCOLORCHASE:
 		    twoColorChaser(color1, color2);
-		    break;
+		    break;*/
 		case WARMFADE:
 		    warmFade();
 		    break;
@@ -1678,7 +1903,9 @@ void runMode() {
 	        break;
 		case NORMAL:
 		default:
-		    transitionAll(incandescent,LINEAR); //transition(incandescent, false);    //colorAll(defaultColor, demo);
+		    transitionAll(getColorFromInteger(defaultColor),LINEAR); 
+		    //transition(incandescent, false);    
+		    //colorAll(defaultColor, demo);
 		    run = FALSE;
 			break;
     }    
@@ -1686,40 +1913,29 @@ void runMode() {
 
 void resetVariables(int modeIndex) {
     switch (modeIndex) {
-        case BITCLOCK:
-            // Colors of the hour digits
-            hourTensColor = getColorFromInteger(color1);    //Color(0, 205, 102);
-            hourOnesColor = getColorFromInteger(color1);    //Color(0, 255, 127);
-            
-            // Colors of the minute digits
-            minuteTensColor = getColorFromInteger(color2);  //Color(99, 184, 255);
-            minuteOnesColor = getColorFromInteger(color2);  //Color(79, 148, 205);
-            
-            // Colors of the second digits
-            secondTensColor = getColorFromInteger(color3);  //Color(255, 48, 48);
-            secondOnesColor = getColorFromInteger(color3);  //Color(205, 0, 0);
-            
-            // Colors of the AM / PM indicator dots
-          	amcolor = fadeColor(orange, 0.4);   //dim orange;
-          	pmcolor = fadeColor(teal, 0.4);     //dim teal;
-            
-            // Color of the separating lines
-            currentBg = 0;
-          	/*bg = getColorFromInteger(lerpColor(Wheel(random(SIDE, 256), 0.25), 
-        			Wheel(random(SIDE, 256), 0.25), 
-        			random(SIDE, 256), 0, 255));*/
-
-            // This is for padding
-            jitter = 1;
-            
-            transitionAll(black,LINEAR);
+        case ACIDRAIN:
+        case GOLDRAIN:
+            fadingMax=25;
+            initSalvos();
+            transitionAll(black, LINEAR);
             break;
+		case RAIN:
+		    transitionAll(black, LINEAR);
+            // Do we want some lightning to go with the rain? ;-)
+            if(switch4) {
+    		    lastLightning = millis();
+    		    lightningInterval = oneMinuteInterval / random(24, 76);
+    		    lastLightningInterval = lightningInterval;
+            }
+		    break;
+		case LIGHTNING:
+		    transitionAll(black, LINEAR);
+			lastLightning = millis();
+			lightningInterval = oneMinuteInterval / random(24, 76);
+			break;
 		case CLOCK:
             hours = minutes = seconds = 0;
             h = m = s = Point(0, 0, 0);
-            hcolor = mcolor = scolor = black;
-            // digit colors
-            hdcolor = mdcolor = sdcolor = black;
             // digit positions
         	h.z = SIDE - 1;
         	m.z = SIDE - 4;
@@ -1731,10 +1947,6 @@ void resetVariables(int modeIndex) {
             hplane = 6;
             mplane = 3;
             splane = 0;
-          	//adjust color intensity (dim by percent)
-          	amcolor = fadeColor(orange, 0.4);   //dim orange;
-          	pmcolor = fadeColor(teal, 0.4);     //dim teal;
-            nextBg = currentBg = 0;
             thickness = 1;
             sprintf(clockMessage, "00:00:00XX");
             switch(whichTextMode) {
@@ -1765,7 +1977,7 @@ void resetVariables(int modeIndex) {
             }
             transitionAll(black,LINEAR);
 		    break;
-		}   
+		}
 		case CHEERLIGHTS:
 		    hostname = "api.thingspeak.com";
 		    path = "/channels/1417/field/2/last.txt";
@@ -1782,13 +1994,13 @@ void resetVariables(int modeIndex) {
 		case LISTENER:
 	    {
 		    /*** DEBUG ***/
-            //IPAddress myIp = WiFi.localIP();
-            //sprintf(debug, "%d.%d.%d.%d", myIp[0], myIp[1], myIp[2], myIp[3]);
+            IPAddress myIp = WiFi.localIP();
+            sprintf(debug, "%d.%d.%d.%d", myIp[0], myIp[1], myIp[2], myIp[3]);
             transitionAll(black,LINEAR);
 		    countdown = 0;
         	Udp.stop();
             while(!Udp.setBuffer(EXPECTED_PACKET_SIZE)) { /* Start the UDP */ }
-            Udp.begin(TPM2NET_LISTENING_PORT);
+            Udp.begin(65506);
 		    break;
 	    }
 		case CUBES:
@@ -1796,16 +2008,19 @@ void resetVariables(int modeIndex) {
             inc=1;
             mode=0;
             flipColor = TRUE;
-		    transitionAll(black,LINEAR);	//fadeToBlack();
+		    transitionAll(black,LINEAR);	
+		    //fadeToBlack();
 		    break;
-		case CHRISTMASTREE:
+		/*case CHRISTMASTREE:
 		    isFirstLap = TRUE;
 		    transitionAll(black,LINEAR);	//fadeToBlack();
-		    break;
+		    break;*/
 		case PLASMA:
             phase = 0.0;
             colorStretch = 0.23;    // Higher numbers will produce tighter color bands 
-		    transitionAll(black,LINEAR);	//fadeToBlack();
+		    fadeSmooth(0, SIDE, 0.125);
+		    transitionAll(black,LINEAR);	
+		    //fadeToBlack();
 		    break;
 		case RAINBOW_BURST:
             idex = 0;
@@ -1837,9 +2052,12 @@ void resetVariables(int modeIndex) {
             squarral_zInc = 1;
             position = {0,0,0};
             increment = {1,0,0};
-		    transitionAll(black,LINEAR);	//fadeToBlack();
+		    transitionAll(black,LINEAR);	
+		    //fadeToBlack();
 		    break;
 		case WHIRLWIND:
+			center = { 4.5, 4.5, 4.5 };
+			lastRand = lastLastRand = 0;
 		    lastSwap = millis();
             for (int i=0; i<MAX_DOTS; i++) {
                 y[i] = random(SIDE);
@@ -1848,35 +2066,27 @@ void resetVariables(int modeIndex) {
                 //clr[i] = Color(rand()%16, rand()%16, rand()%16);
                 randomColor(&clr[i]);
             }
-            transitionAll(black,LINEAR);	//fadeToBlack();
+            transitionAll(black,LINEAR);	
+            //fadeToBlack();
 		    break;
 		case CUBE_PAINTER:
 		{
-            /** DEBUG **/
-            //clearEEPROM();  //EEPROM.clear();
-            bool redraw = FALSE;
-            
-            // Check EEPROM area and initialize flag if there was color data previoulsy set
-            EEPROM.get(0, drawingBuffer);
-            for(int i=0; i<(PIXEL_CNT*BPP); i++) {
-                if(drawingBuffer[i] != 0xFF) {
-                    redraw = TRUE;
-                    break;
-                }
-            }
-            // If there is no color data stored in EEPROM area then blank the entire buffer
-            // (EEPROM.get() returns an array filled with 255, so we need to fill it with 0's)
-            if(!redraw) {
-                for(int i=0; i<(PIXEL_CNT*BPP); i++)
-                    drawingBuffer[i] = 0;
-            }
+            unsigned char red, green, blue;
+            transitionAll(black,LINEAR);	
+            //fadeToBlack();
             
             // (If there's color data previously stored, there's nothing to do)
             // In either case, redraw the cube with the color data from the buffer array
-            for(int i=0; i<(PIXEL_CNT*BPP); i+=BPP)
-                strip.setPixelColor(i/3, strip.Color(drawingBuffer[i], drawingBuffer[i+1], drawingBuffer[i+2]));
+            for(int i=0; i<(PIXEL_CNT*BPP); i+=BPP) {
+                red = drawingBuffer[i];
+                green = drawingBuffer[i+1];
+                blue = drawingBuffer[i+2];
+                if((red + green + blue) > 0)
+                    strip.setPixelColor(i/3, red, green, blue);
+            }
 		    break;
 		}
+	    case BITCLOCK:
      	case COLORALL:
 		    break;
 		case DIGI:
@@ -1887,17 +2097,16 @@ void resetVariables(int modeIndex) {
 		case COLORPULSE:
 		case COLORSTRIPES:
 		case ACIDDREAM:
-		case RAIN:
 		case RAINBOW:
 		case SPECTRUM:
-		case THEATERCHASE:
-		case FROZEN:
+		//case THEATERCHASE:
+		//case FROZEN:
 		case COLLIDE:
 		case POLICELIGHTS:
-		case TWOCOLORCHASE:
+		//case TWOCOLORCHASE:
 		case COLORFADE:
-		case CHRISTMASLIGHTS:
-		case CHRISTMASWREATH:
+		//case CHRISTMASLIGHTS:
+		//case CHRISTMASWREATH:
 		case WARMFADE:
      	case FLICKER:
         case STANDBY:
@@ -1953,6 +2162,238 @@ void cubeGreeting(int textMode, int frameCount, float pos) {
     showPixels();
 }
 
+void acidRain() {
+    run = TRUE;
+
+    switch(currentModeID) {
+        case ACIDRAIN:
+            fadeSmooth(1, SIDE, 0.125);
+            break;
+        case GOLDRAIN:
+            fadeSmooth(0, SIDE-1, 0.08);
+            break;
+    }
+    
+    if(switch1)
+		checkMicrohpone();
+    else {
+        if((timeAboveThreshhold-millis())>MIN_SALVO_SPACING) {
+            timeAboveThreshhold=millis();
+            srand(timeAboveThreshhold);
+            launchRain(random(8, MAX_POINTS+1));
+        }
+    }
+    updateSalvos();
+    drawSalvos();
+    
+    ledColor++;
+    if(ledColor>400) {
+        srand(millis());
+        ledColor=0;
+    }
+    if((ledColor%3)==0) {
+        if(currentModeID==ACIDRAIN)
+            fadeSmooth(0, 1, 0.06);         //base
+        if(currentModeID==GOLDRAIN)
+            fadeSmooth(SIDE-1, SIDE, 0.18);	//ceiling
+    }
+
+    if(stop) {demo = FALSE; return;}
+    if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+    delay(speed);
+    showPixels();
+}
+
+void checkMicrohpone() {
+	const uint8_t NUM_SAMPLES=5;
+  	int runningAverage=0;
+	
+	for(uint8_t i=0;i<NUM_SAMPLES;i++) {
+		/* the microphone values from the ADC range from                             *
+		 * 0 to 4095.  The mic is an AC signal, biased around 1.65v,                 *
+		 * so a flat line from the mic reads as 2048.  If we want the amplitude      *
+		 * of the audio signal, we have to look at the difference between the signal *
+		 * and a flat DC signal, so I look at how far the sample is from 2048        */
+		int sample=analogRead(MICROPHONE)-SAMPLES;
+		if(sample<0)
+			sample=0;
+		if(sample>maxVal) {
+			maxVal=sample;
+			runningAverage+=sample;
+		}
+		if(stop) {demo = FALSE; return;}
+		if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+	}
+  	runningAverage/=NUM_SAMPLES;
+  	sprintf(debug,"%f", maxVal);
+    /* We try to keep the baseline reading at 450.0 when idle;                          *
+     * when peaking, readings can get upwards from 1000.0 to 1200.0 (clipping occurs);  *
+     * maxVal is constantly adjusted to keep mean readings within optimal capture range */
+    if(maxVal>=650) maxVal-=maxVal*0.0625;      // As maxVal gets too high, cube starts not picking up any signals
+    if(maxVal<650 && maxVal>450) maxVal-=0.9;   // This is the range where audio capture and display is optimal
+    if(maxVal<450) maxVal+=0.5;                 // We cutoff maxVal to keep from clipping due to excess peaking
+	launchRain(runningAverage);
+}
+
+void launchRain(int amplitude) {
+	uint8_t r, g, b;
+    int i;
+	
+    for(i=0;((i<SIDE)&&(!salvos[i].dead));i++)
+        ;
+    if(i<SIDE) {
+        if(!switch1)
+            if(amplitude>maxVal)
+                maxVal=amplitude;
+      	
+      	int numDrops=map(amplitude, 0, maxVal, 0, MAX_POINTS);
+        for(int j=0;j<numDrops;j++) {
+            salvos[i].dead=false;
+          	salvos[i].raindrops[j].dead=false;
+          	salvos[i].raindrops[j].flipped=false;
+          	salvos[i].raindrops[j].speed=setNewSpeed();
+            salvos[i].raindrops[j].raindrop.x=rand()%SIDE;
+            salvos[i].raindrops[j].raindrop.z=rand()%SIDE;
+      		salvos[i].raindrops[j].raindrop.y=SIDE;
+
+        	switch (currentModeID) {
+        	    case GOLDRAIN:
+					r=random(95, 128);
+					g=random(80, 96);
+					b=random(16, 26);
+					salvos[i].raindrops[j].color=Color(r, g, b);
+        	        //salvos[i].raindrops[j].color=Color( 127, 80, 16 );
+        	        break;
+                case ACIDRAIN:
+                    if(ledColor<200)
+                        salvos[i].raindrops[j].color=Color( 0, 50, 150 );
+                    if(ledColor>=200 && ledColor<=400)
+                        salvos[i].raindrops[j].color=Color( 150, 150, 0 );
+                    break;
+                default:
+                    break;
+        	}
+        }
+      
+        for(int j=numDrops;j<MAX_POINTS;j++) {
+            salvos[i].raindrops[j].raindrop.x=-1;
+            salvos[i].raindrops[j].raindrop.z=-1;
+        }
+    }
+}
+
+void initSalvos() {
+    // Seed the random number generator
+    srand(millis()); 
+    if(currentModeID==ACIDRAIN) ledColor=0;
+
+    for(int i=0;i<SIDE;i++) {
+        for(int j=0;j<MAX_POINTS;j++) {
+            salvos[i].raindrops[j].raindrop.x=-1;
+            salvos[i].raindrops[j].raindrop.z=-1;
+          	salvos[i].raindrops[j].speed=0;
+          	salvos[i].raindrops[j].flipped=false;
+          	salvos[i].raindrops[j].color=black;
+          	salvos[i].raindrops[j].dead=true;
+        }
+        salvos[i].dead=true;
+    }
+}
+
+void drawSalvos() {
+    for(int i=0;i<SIDE;i++) {
+        if(!salvos[i].dead) {
+            for(int j=0;j<MAX_POINTS;j++) {
+              	if(!salvos[i].raindrops[j].dead) {
+                	if(currentModeID==ACIDRAIN) {
+						if(ledColor<200) {
+							if(salvos[i].raindrops[j].raindrop.y>=6 && salvos[i].raindrops[j].raindrop.y<7) salvos[i].raindrops[j].color=Color( 0, 10, 90 );
+							if(salvos[i].raindrops[j].raindrop.y>=5 && salvos[i].raindrops[j].raindrop.y<6) salvos[i].raindrops[j].color=Color( 0, 0, 100 );
+							if(salvos[i].raindrops[j].raindrop.y>=4 && salvos[i].raindrops[j].raindrop.y<5) salvos[i].raindrops[j].color=Color( 10, 0, 110 );
+							if(salvos[i].raindrops[j].raindrop.y>=3 && salvos[i].raindrops[j].raindrop.y<4) salvos[i].raindrops[j].color=Color( 30, 0, 120 );
+							if(salvos[i].raindrops[j].raindrop.y>=2 && salvos[i].raindrops[j].raindrop.y<3) salvos[i].raindrops[j].color=Color( 100, 0, 150 );
+							if(salvos[i].raindrops[j].raindrop.y>=1 && salvos[i].raindrops[j].raindrop.y<2) salvos[i].raindrops[j].color=Color( 100, 0, 100 );
+							if(salvos[i].raindrops[j].raindrop.y>=0 && salvos[i].raindrops[j].raindrop.y<1) salvos[i].raindrops[j].color=Color( random(100, 161), 0, 10 );
+						}
+						if(ledColor>=200 && ledColor<=400) {   
+							if(salvos[i].raindrops[j].raindrop.y>=6 && salvos[i].raindrops[j].raindrop.y<7) salvos[i].raindrops[j].color=Color( 100, 100, 0 );
+							if(salvos[i].raindrops[j].raindrop.y>=5 && salvos[i].raindrops[j].raindrop.y<6) salvos[i].raindrops[j].color=Color( 150, 50, 0 );
+							if(salvos[i].raindrops[j].raindrop.y>=4 && salvos[i].raindrops[j].raindrop.y<5) salvos[i].raindrops[j].color=Color( 150, 20, 0 );
+							if(salvos[i].raindrops[j].raindrop.y>=3 && salvos[i].raindrops[j].raindrop.y<4) salvos[i].raindrops[j].color=Color( 150, 10, 0 );
+							if(salvos[i].raindrops[j].raindrop.y>=2 && salvos[i].raindrops[j].raindrop.y<3) salvos[i].raindrops[j].color=Color( 150, 0, 0 );
+							if(salvos[i].raindrops[j].raindrop.y>=1 && salvos[i].raindrops[j].raindrop.y<2) salvos[i].raindrops[j].color=Color( 120, 0, 0 );
+							if(salvos[i].raindrops[j].raindrop.y>=0 && salvos[i].raindrops[j].raindrop.y<1) salvos[i].raindrops[j].color=Color( random(100, 160), random(0, 21), 0 );
+						}
+						//Draw the lake pseudo-randomly by mirroring falling raindrops at every cycle
+						//if((ledColor%3)==0) {
+							if(ledColor<200)
+								setPixelColor(salvos[i].raindrops[j].raindrop.x, 0, salvos[i].raindrops[j].raindrop.z, Color( random(100, 161), 0, 10 ));
+							if(ledColor>=200 && ledColor<=400)
+								setPixelColor(salvos[i].raindrops[j].raindrop.x, 0, salvos[i].raindrops[j].raindrop.z, Color( random(100, 160), random(0, 21), 0 ));
+						//}
+                	}
+                	setPixelColor(salvos[i].raindrops[j].raindrop.x, salvos[i].raindrops[j].raindrop.y, salvos[i].raindrops[j].raindrop.z, salvos[i].raindrops[j].color);
+              	}
+            }
+        }
+	}
+}
+
+void updateSalvos() {
+    for(int i=0;i<SIDE;i++) {
+        for(int j=0;j<MAX_POINTS;j++) {
+            salvos[i].raindrops[j].raindrop.y-=salvos[i].raindrops[j].speed;
+            if(salvos[i].raindrops[j].raindrop.y<0)
+                salvos[i].raindrops[j].dead=true;
+			if(currentModeID==GOLDRAIN) {
+				//Increase the 'golden glow' as drops fall down further
+				salvos[i].raindrops[j].color.red+=(1 + salvos[i].raindrops[j].speed);
+				salvos[i].raindrops[j].color.green+=(1 + salvos[i].raindrops[j].speed);
+				salvos[i].raindrops[j].color.blue+=(0.5 + salvos[i].raindrops[j].speed);
+			}
+        }
+      	
+    	int offCube=true;
+      	for(int j=0;j<MAX_POINTS;j++) {
+          	if(!salvos[i].raindrops[j].dead) {
+				offCube=false;
+              	break;
+            }
+        }
+      	if(offCube)
+            salvos[i].dead=true;
+    }
+}
+
+float setNewSpeed() {
+  	float ret;
+    int rndSpeed=random(0, 7);
+    switch(rndSpeed) {
+      case 0:
+        ret=0.5;
+        break;
+      case 1:
+        ret=0.15;
+        break;
+      case 2:
+        ret=0.1;
+        break;
+      case 3:
+        ret=0.25;
+        break;
+      case 4:
+        ret=0.2;
+        break;
+      case 5:
+        ret=0.35;
+        break;
+      case 6:
+        ret=0.3;
+        break;
+    }
+  	return ret;
+}
+
 /** 
  * Used to make linear transitions between colors by drawing a linear line from
  * the current color to the end color in the HSV model.
@@ -1963,7 +2404,7 @@ void cubeGreeting(int textMode, int frameCount, float pos) {
  * through pink/purple to get there.
  */
 void transitionAll(Color endColor, uint16_t method) {
-    int numSteps = 8;   //This could be an input param to this function
+    int numSteps = 8;
     uint32_t startColor[strip.numPixels()];
     //run = FALSE;
     
@@ -1984,7 +2425,7 @@ void transitionAll(Color endColor, uint16_t method) {
 
 //Same as transitionAll but only for one pixel
 void transitionOne(Color endColor, uint16_t index, uint16_t method) {
-    int numSteps = 8;   //This could be an input param to this function
+    int numSteps = 8;
     Color startColor = getColorFromInteger(strip.getPixelColor(index));
 
     for(int i=1; i<=numSteps; i++) {
@@ -1998,6 +2439,9 @@ void transitionOne(Color endColor, uint16_t index, uint16_t method) {
 //Used to set the next color step for transitionAll and transitionOne
 void transitionHelper(Color startColor, Color endColor, uint16_t index, uint16_t method, int16_t numSteps, int16_t step) {
     Color col2;
+    Color red = Color(0xe5, 0x00, 0x00);
+    Color green = Color(0x15, 0xb0, 0x1a);
+    Color blue = Color(0x03, 0x43, 0xdf);
 
     //Find the step
     int16_t redStep   = getTransitionStep(startColor, endColor, method, numSteps, step, red);
@@ -2027,6 +2471,9 @@ void transitionHelper(Color startColor, Color endColor, uint16_t index, uint16_t
 //Used to get the next color step for transitionHelper()
 int16_t getTransitionStep(Color startColor, Color endColor, uint16_t method, int16_t numSteps, int16_t step, Color whichColor) {
 	int16_t increment=0;
+    Color red = Color(0xe5, 0x00, 0x00);
+    Color green = Color(0x15, 0xb0, 0x1a);
+    Color blue = Color(0x03, 0x43, 0xdf);
 
     if(method == LINEAR) {
         if(whichColor == red)        increment = (step * (endColor.red-startColor.red))     / numSteps;
@@ -2143,7 +2590,7 @@ void showClock() {
 }
 
 void textClock() {
-    bg = getColorFromInteger(color1);    
+    Color bg = getColorFromInteger(color1);
     //static int frameCount = 0;
     int hTenths = hours / 10;
     int hUnits = hours % 10;
@@ -2166,7 +2613,10 @@ void textClock() {
     if(switch4)
         background(black);
     else
-        background(fadeColor(complement(bg), 0.25));
+        if(switch3)
+            background(fadeColor(complement(bg), 0.25));
+        else
+            background(fadeColor(getColorFromInteger(color2), 0.25));
 
     //(largest_item - smallest_item) maps to (max-min)
     float ratio = (.5 - .05)/((120*.05) - .05);
@@ -2214,25 +2664,27 @@ void textClock() {
  *  http://cubetube.org/gallery/newestFirst/258/
 **/
 void threeDClock() {
-	bg = getColorFromInteger(color1);    //adjustGamma(Color(70, 70, 70), 0.5);
+	//Color bg = getColorFromInteger(color1);    //adjustGamma(Color(70, 70, 70), 0.5);
+	Color scolor, mcolor, hcolor;
+	Color hdcolor, mdcolor, sdcolor;
+	bool ampm[2][3][2] = {
+		{	// "A":
+			{1, 1},
+			{1, 1},
+			{1, 1}
+		},
+		{	// "P":
+			{1, 1},
+			{1, 1},
+			{1, 0}
+		}
+	};
     run = TRUE;
   	
-  	if (switch3) {  //BG
-      if (currentBg == nextBg)
-          nextBg = rand()%256;
-      else if (nextBg > currentBg)
-          currentBg++;
-      else
-          currentBg--;
-
-      bg = getColorFromInteger(Wheel(currentBg));
-    }
-    
-    if(switch4)
-        background(black);
-    else
-        background(fadeColor(bg, 0.08));
-
+    background(black);
+	
+	Color amcolor = fadeColor(Color(0xf9, 0x73, 0x06), 0.4);	//dim orange;
+	Color pmcolor = fadeColor(Color(0x02, 0x93, 0x86), 0.4);	//dim teal;
 	if (!switch2) { //!use24hr
 		if (Time.isAM()) {
           for (int row = 0; row < 3; row++)
@@ -2265,9 +2717,16 @@ void threeDClock() {
   	//varying each color; if you don't like going too
   	//wild, you can try narrowing the ranges to create
   	//more subtle tones to match your taste...  ;-P
-	hdcolor=getColorFromInteger(Wheel(map(hours, (switch2 ? 0 : 1), (switch2 ? 23 : 12), 0, 255), 0.6));
-	mdcolor=getColorFromInteger(Wheel(map(minutes, 0, 59, 0, 255), 0.7));
-    sdcolor=getColorFromInteger(Wheel(map(seconds, 0, 59, 0, 255), 0.8));
+  	if(switch3) {
+    	hdcolor=getColorFromInteger(Wheel(map(hours, (switch2 ? 0 : 1), (switch2 ? 23 : 12), 0, 255), 0.6));
+    	mdcolor=getColorFromInteger(Wheel(map(minutes, 0, 59, 0, 255), 0.7));
+        sdcolor=getColorFromInteger(Wheel(map(seconds, 0, 59, 0, 255), 0.8));
+  	}
+  	else {
+    	hdcolor=getColorFromInteger(color1);
+    	mdcolor=getColorFromInteger(color2);
+        sdcolor=getColorFromInteger(color3);
+  	}
   	//adjust color intensity (dim by percent)
   	hcolor = fadeColor(hdcolor, 0.6); //adjustGamma(hdcolor, 0.6);
   	mcolor = fadeColor(mdcolor, 0.6); //adjustGamma(mdcolor, 0.6);
@@ -2285,6 +2744,78 @@ void threeDClock() {
 
 void display_digits(int number, int drow, int dplane, Color numcolor) {
 	int indiv[2];
+	bool digits[10][5][3] = {
+		{	// "0":
+			{1, 1, 1},
+			{1, 0, 1},
+			{1, 0, 1},
+			{1, 0, 1},
+			{1, 1, 1}
+		},
+		{	// "1":
+			{0, 1, 0},
+			{1, 1, 0},
+			{0, 1, 0},
+			{0, 1, 0},
+			{1, 1, 1}
+		},
+		{	// "2":
+			{1, 1, 0},
+			{0, 0, 1},
+			{0, 1, 1},
+			{1, 0, 0},
+			{1, 1, 1}
+		},
+		{	// "3":
+			{1, 1, 0},
+			{0, 0, 1},
+			{1, 1, 0},
+			{0, 0, 1},
+			{1, 1, 0}
+		},
+		{	// "4":
+			{1, 0, 1},
+			{1, 0, 1},
+			{1, 1, 1},
+			{0, 0, 1},
+			{0, 0, 1}
+		},
+		{	// "5":
+			{1, 1, 1},
+			{1, 0, 0},
+			{1, 1, 1},
+			{0, 0, 1},
+			{1, 1, 0}
+		},
+		{	// "6":
+			{0, 1, 1},
+			{1, 0, 0},
+			{1, 1, 1},
+			{1, 0, 1},
+			{1, 1, 1}
+		},
+		{	// "7":
+			{1, 1, 1},
+			{0, 0, 1},
+			{0, 1, 0},
+			{0, 1, 0},
+			{0, 1, 0}
+		},
+		{	// "8":
+			{1, 1, 1},
+			{1, 0, 1},
+			{1, 1, 1},
+			{1, 0, 1},
+			{1, 1, 1}
+		},
+		{	// "9":
+			{1, 1, 1},
+			{1, 0, 1},
+			{1, 1, 1},
+			{0, 0, 1},
+			{1, 1, 0}
+		}
+	};
     run = TRUE;
 
     indiv[0] = number / 10;
@@ -2305,7 +2836,29 @@ void display_digits(int number, int drow, int dplane, Color numcolor) {
 }
 
 void bitClock() {
+	Color bg;
+	int jitter = 1;	// This is for padding
     run = TRUE;
+    
+    // Colors of the hour digits
+    Color hourTensColor = getColorFromInteger(color1);    //Color(0, 205, 102);
+    Color hourOnesColor = getColorFromInteger(color1);    //Color(0, 255, 127);
+    
+    // Colors of the minute digits
+    Color minuteTensColor = getColorFromInteger(color2);  //Color(99, 184, 255);
+    Color minuteOnesColor = getColorFromInteger(color2);  //Color(79, 148, 205);
+    
+    // Colors of the second digits
+    Color secondTensColor = getColorFromInteger(color3);  //Color(255, 48, 48);
+    Color secondOnesColor = getColorFromInteger(color3);  //Color(205, 0, 0);
+    
+    // Colors of the AM / PM indicator dots
+  	Color amcolor = fadeColor(Color(0xf9, 0x73, 0x06), 0.4);   //dim orange;
+  	Color pmcolor = fadeColor(Color(0x02, 0x93, 0x86), 0.4);     //dim teal;
+    
+  	/*bg = getColorFromInteger(lerpColor(Wheel(random(SIDE, 256), 0.25), 
+			Wheel(random(SIDE, 256), 0.25), 
+			random(SIDE, 256), 0, 255));*/
 
 	if (switch1)    //use24hr
     	hours = Time.hour();
@@ -2318,12 +2871,15 @@ void bitClock() {
     if(switch3) {
       	if (switch2) {  //SWEEP BACKGROUND
             if (currentBg < 256)
-                currentBg+=2;
+                bg = getColorFromInteger(Wheel(currentBg+=3, 0.4));
             else
-                currentBg-=2;
+                currentBg = 0;    //currentBg-=2;
     
-            bg = getColorFromInteger(lerpColor(strip.Color(bg.red, bg.green, bg.blue), 
-            		Wheel(currentBg, 0.4), currentBg, 0, 256));
+            /*bg = getColorFromInteger(lerpColor(strip.Color(bg.red, bg.green, bg.blue), 
+            		Wheel(currentBg, 0.4), currentBg, 0, 255));*/
+  	
+  	        /*bg = getColorFromInteger(lerpColor(Wheel(random(SIDE, 256), 0.4), 
+			        Wheel(currentBg, 0.4), currentBg, 0, 255));*/
         }
         else
             bg = fadeColor(getColorFromInteger(color4), 0.4);
@@ -2339,16 +2895,16 @@ void bitClock() {
     }
 
   	// Draw the hours digits 
-  	drawLightsFromBinary(hours/10, 0, hourTensColor);
-    drawLightsFromBinary(hours%10, 1, hourOnesColor);
+  	drawLightsFromBinary(hours/10, 0, jitter, hourTensColor);
+    drawLightsFromBinary(hours%10, 1, jitter, hourOnesColor);
 
   	// Draw the minutes digits 
-  	drawLightsFromBinary(minutes/10, 2, minuteTensColor);
-    drawLightsFromBinary(minutes%10, 3, minuteOnesColor); 
+  	drawLightsFromBinary(minutes/10, 2, jitter, minuteTensColor);
+    drawLightsFromBinary(minutes%10, 3, jitter, minuteOnesColor); 
 
   	// Draw the seconds digits 
-  	drawLightsFromBinary(seconds/10, 4, secondTensColor);
-    drawLightsFromBinary(seconds%10, 5, secondOnesColor);
+  	drawLightsFromBinary(seconds/10, 4, jitter, secondTensColor);
+    drawLightsFromBinary(seconds%10, 5, jitter, secondOnesColor);
 	
   	// Draw the AM / PM indicator dots
 	if (!switch1) {  //use12hr
@@ -2369,7 +2925,7 @@ void bitClock() {
 // the appropriate 'on' boxes, and turn off boxes that should be off.
 // segment is the x-'slot' to place the box in. For the clock, it is a
 // grid of 6 x-slots, with segment 0 being the leftmost slot.
-void drawLightsFromBinary(int number, int segment, Color voxelColor) {
+void drawLightsFromBinary(int number, int segment, int jitter, Color voxelColor) {
     // changing integer number to binary string of digits
     std::string binary = integerToBinaryString(number); //Integer.toBinaryString(number);
     if(!switch4) binary = strRev(binary);
@@ -2400,6 +2956,7 @@ void drawLightsFromBinary(int number, int segment, Color voxelColor) {
 **/
 void iftttWeather(uint32_t c) {
     unsigned long calculatedInterval;
+    unsigned long iftttWeatherInterval = 10*60*1000;    //Revert back to last mode for IFTTT Weather
     
     //If we're displaying text, configure the interval individually
     if(isNewText) {
@@ -2457,16 +3014,16 @@ void iftttWeather(uint32_t c) {
         }
     }
     else {
-        whichTextMode++;
-        if(whichTextMode > 2) {whichTextMode = 0;}
-        isNewText = FALSE;
+        if(isNewText) {
+            whichTextMode++;
+            if(whichTextMode > 2) {whichTextMode = 0;}
+            isNewText = FALSE;
+        }
         brightness = lastBrightness;
         switch1 = lastSwitchState[0];
-        currentModeID = lastModeID;
-        if(currentModeID == getModeIndexFromID(IFTTTWEATHER))
-            setNewMode(getModeIndexFromID(STANDBY));
-        else
-            setNewMode(getModeIndexFromID(currentModeID));
+        demo = lastDemo;    // restore demo state
+        currentModeID = previousModeID;
+        setNewMode(getModeIndexFromID(currentModeID));
     }
     run = true;
 }
@@ -2480,8 +3037,8 @@ void iftttWeather(uint32_t c) {
 void runCubeClassics(uint32_t c) {
     int i, loop, iterations;
     
-    Color col = getColorFromInteger(c);
-    colorWheel = random(random(2, 256), random(2, 256));
+    //Color col = getColorFromInteger(c);
+    uint8_t colorWheel = random(random(2, 256), random(2, 256));
     int effectOrder[13];
 	
 	for(i=0;i<13;i++) effectOrder[i]=i;
@@ -2493,7 +3050,7 @@ void runCubeClassics(uint32_t c) {
 			case 0:
 			{
 			    iterations = 20;
-			    if(0 == effect_z_updown(iterations, col)) {
+			    if(0 == effect_z_updown(iterations, getColorFromInteger(c), colorWheel)) {
 			        //transitionAll(black, LINEAR);
 			        return;
 			    }
@@ -2503,9 +3060,9 @@ void runCubeClassics(uint32_t c) {
 			{
 			    for(loop=0;loop<3;loop++) {
 			        transitionAll(black, LINEAR);
-			        if(0 == stackingRope(0, col)) { return; }
+			        if(0 == stackingRope(0, getColorFromInteger(c), colorWheel)) { return; }
 			        transitionAll(black, LINEAR);
-			        if(0 == stackingRope(1, col)) { return; }
+			        if(0 == stackingRope(1, getColorFromInteger(c), colorWheel)) { return; }
 			   // collapsingSides(col);
     			}
 				break;
@@ -2515,7 +3072,7 @@ void runCubeClassics(uint32_t c) {
 				//transitionAll(black, LINEAR);
 			    iterations = 100;
 			    for(int axis=AXIS_X;axis<=AXIS_Z;axis++) {
-			        if(0 == effect_wormsqueeze(2, axis, -1, iterations, col)) {
+			        if(0 == effect_wormsqueeze(2, axis, -1, iterations, getColorFromInteger(c))) {
 			            //transitionAll(black, LINEAR);
 			            return;
 			        }
@@ -2527,7 +3084,7 @@ void runCubeClassics(uint32_t c) {
 			    //transitionAll(black, LINEAR);
 			    for(loop=0;loop<5;loop++) {
 			        for(int axis=AXIS_X;axis<=AXIS_Z;axis++) {
-			           if(0 == effect_planboing(axis, col)) {
+			           if(0 == effect_planboing(axis, getColorFromInteger(c))) {
 			               //transitionAll(black, LINEAR);
 			               return;
 			           }
@@ -2546,7 +3103,7 @@ void runCubeClassics(uint32_t c) {
 			    for(loop=0;loop<5;loop++) {
 			        for(int axis=AXIS_X;axis<=AXIS_Z;axis++) {
 			            for(int j=0;j<4;j++) {
-			                if(0 == effect_axis_updown_randsuspend(axis, suspendTime,j%2,col)) {
+			                if(0 == effect_axis_updown_randsuspend(axis, suspendTime,j%2,getColorFromInteger(c))) {
 			                    //transitionAll(black, LINEAR);
 			                    return;
 			                }
@@ -2561,7 +3118,7 @@ void runCubeClassics(uint32_t c) {
 				for(loop=0;loop<5;loop++) {
 			    	for(int axis=AXIS_Z;axis>=AXIS_X;axis--) {
 			            for(int j=0;j<4;j++) {
-			                if(0 == effect_loadbar(axis, col)) {
+			                if(0 == effect_loadbar(axis, getColorFromInteger(c))) {
 			                    //transitionAll(black, LINEAR);
 			                    return;
 			                }
@@ -2577,7 +3134,7 @@ void runCubeClassics(uint32_t c) {
 			    	for(int axis=AXIS_X;axis<=AXIS_Z;axis++) {
 			    	    for(int mode=1;mode<=2;mode++) {
 			                for(int origin=0;origin<=1;origin++) {
-			                    if(0 == effect_boxside_randsend_parallel (axis, origin, mode, col)) {
+			                    if(0 == effect_boxside_randsend_parallel (axis, origin, mode, getColorFromInteger(c))) {
 			                        //transitionAll(black, LINEAR);
 			                        return;
 			                    }
@@ -2595,7 +3152,7 @@ void runCubeClassics(uint32_t c) {
 			    for(int mode=0;mode<=1;mode++) {
 			        for(int drawmode=1;drawmode<=3;drawmode++) {
 			            //boingboing(250, 0x01, 0x02, col);
-			            if(0 == boingboing(iterations, mode, drawmode, col)) {
+			            if(0 == boingboing(iterations, mode, drawmode, getColorFromInteger(c))) {
 			                //transitionAll(black, LINEAR);
 			                return;
 			            }
@@ -2607,7 +3164,7 @@ void runCubeClassics(uint32_t c) {
 			{
 			    //transitionAll(black, LINEAR);
 			    iterations = 2000;
-			    if(0 == ripples (iterations, col)) {
+			    if(0 == ripples (iterations, getColorFromInteger(c))) {
 			        //transitionAll(black, LINEAR);
 			        return;
 			    }
@@ -2618,7 +3175,7 @@ void runCubeClassics(uint32_t c) {
 			    //transitionAll(black, LINEAR);
 			    iterations = 1200;
 			    for(int axis=AXIS_X;axis<=AXIS_Z;axis++) {
-			        if(0 == linespin (iterations, axis, col)) {
+			        if(0 == linespin (iterations, axis, getColorFromInteger(c))) {
 			            //transitionAll(black, LINEAR);
 			            return;
 			        }
@@ -2630,7 +3187,7 @@ void runCubeClassics(uint32_t c) {
 			 	//transitionAll(black, LINEAR);
 			    iterations = 1200;
 			    for(int axis=AXIS_X;axis<=AXIS_Z;axis++) {
-			        if(0 == sinelines (iterations, axis, col)) {
+			        if(0 == sinelines (iterations, axis, getColorFromInteger(c))) {
 			            //transitionAll(black, LINEAR);
 			            return;
 			        }
@@ -2641,7 +3198,7 @@ void runCubeClassics(uint32_t c) {
 			{
 				//transitionAll(black, LINEAR);
 			    iterations = 1500;
-			    if(0 == spheremove (iterations,  col)) {
+			    if(0 == spheremove (iterations,  getColorFromInteger(c))) {
 			        //transitionAll(black, LINEAR);
 			        return;
 			    }
@@ -2652,7 +3209,7 @@ void runCubeClassics(uint32_t c) {
 			{
 			    //transitionAll(black, LINEAR);
 			    iterations = 20;
-			    if(0 == fireworks(iterations, 50, col)) {
+			    if(0 == fireworks(iterations, 50, getColorFromInteger(c))) {
 			        //transitionAll(black, LINEAR);
 			        return;
 			    }
@@ -2663,13 +3220,13 @@ void runCubeClassics(uint32_t c) {
     run = TRUE;
 }
 
-int effect_z_updown (int iterations, Color col) {
+int effect_z_updown (int iterations, Color col, uint8_t colorWheel) {
 	uint8_t positions[64];
 	uint8_t destinations[64];
 	int i,y,move;
 	int speedFactor = 10;
 	
-    if(switch1) col = getColorFromInteger(Wheel(colorWheel));
+    col = switch1 ? getColorFromInteger(Wheel(colorWheel)) : getColorFromInteger(color1);
     //else if(switch2) col = cheerLightsColor;
         
 	for (i=0; i<64; i++) {
@@ -2678,7 +3235,7 @@ int effect_z_updown (int iterations, Color col) {
 	}
 
 	for (move=0; move<4; move++)	{
-		if(0 == effect_z_updown_move(positions, destinations, AXIS_Z, col)) return 0 ;
+		if(0 == effect_z_updown_move(positions, destinations, AXIS_Z, col, colorWheel)) return 0 ;
 		showPixels();
 		if(stop) {demo = FALSE; return 0;}
         if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return 0;}}
@@ -2690,7 +3247,7 @@ int effect_z_updown (int iterations, Color col) {
 			destinations[rand()%64] = rand()%8;
 		}
 		for (move=0;move<5;move++) {
-			if(0 == effect_z_updown_move(positions, destinations, AXIS_Z, col)) return 0;
+			if(0 == effect_z_updown_move(positions, destinations, AXIS_Z, col, colorWheel)) return 0;
 			showPixels();
 		    if(stop) {demo = FALSE; return 0;}
             if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return 0;}}
@@ -2705,8 +3262,11 @@ int effect_z_updown (int iterations, Color col) {
 	return 1;
 }
 
-int effect_z_updown_move (unsigned char positions[64], unsigned char destinations[64], char axis, Color col) {
+int effect_z_updown_move (unsigned char positions[64], unsigned char destinations[64], char axis, Color col, uint8_t colorWheel) {
 	int px;
+	// Some effects can render on different axis
+	// for example send pixels along an axis
+	//const char AXIS_Z=0x7a;
 	
 	for (px=0; px<64; px++)	{
 		if (positions[px]<destinations[px])	{
@@ -2765,7 +3325,7 @@ int draw_positions_axis (char axis, unsigned char positions[64], int invert, Col
  * @param mode == 0: gradient color rainbow as the rope stacks
  *        mode == 1: Each side is a random color
  */
-int stackingRope(int mode, Color col) {
+int stackingRope(int mode, Color col, uint8_t colorWheel) {
     int x, y, z;
     uint8_t sideColor1, sideColor2, sideColor3, sideColor4;
     
@@ -2781,7 +3341,8 @@ int stackingRope(int mode, Color col) {
             if(stop) {demo = FALSE; return 0;}
             if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return 0;}}
             if(mode == 1) col = getColorFromInteger(Wheel(sideColor1));
-            else if(switch1) col = getColorFromInteger(Wheel(colorWheel+=2));
+            else //if(switch1) col = getColorFromInteger(Wheel(colorWheel+=2));
+                col = switch1 ? getColorFromInteger(Wheel(colorWheel+=2)) : getColorFromInteger(color1);
             //else if(switch2) col = cheerLightsColor;
             setPixelColor(0,y,z,col);
             showPixels();
@@ -2791,7 +3352,8 @@ int stackingRope(int mode, Color col) {
             if(stop) {demo = FALSE; return 0;}
             if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return 0;}}
             if(mode == 1) col = getColorFromInteger(Wheel(sideColor2));
-            else if(switch1) col = getColorFromInteger(Wheel(colorWheel+=2));
+            else //if(switch1) col = getColorFromInteger(Wheel(colorWheel+=2));
+                col = switch1 ? getColorFromInteger(Wheel(colorWheel+=2)) : getColorFromInteger(color1);
             //else if(switch2) col = cheerLightsColor;
             setPixelColor(x,y,SIDE-1,col);
             showPixels();
@@ -2801,7 +3363,8 @@ int stackingRope(int mode, Color col) {
             if(stop) {demo = FALSE; return 0;}
             if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return 0;}}
             if(mode == 1) col = getColorFromInteger(Wheel(sideColor3));
-            else if(switch1) col = getColorFromInteger(Wheel(colorWheel+=2));
+            else //if(switch1) col = getColorFromInteger(Wheel(colorWheel+=2));
+                col = switch1 ? getColorFromInteger(Wheel(colorWheel+=2)) : getColorFromInteger(color1);
             //else if(switch2) col = cheerLightsColor;
             setPixelColor(SIDE-1,y,z,col);
             showPixels();
@@ -2811,19 +3374,21 @@ int stackingRope(int mode, Color col) {
             if(stop) {demo = FALSE; return 0;}
             if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return 0;}}
             if(mode == 1) col = getColorFromInteger(Wheel(sideColor4));
-            else if(switch1) col = getColorFromInteger(Wheel(colorWheel+=2));
+            else //if(switch1) col = getColorFromInteger(Wheel(colorWheel+=2));
+                col = switch1 ? getColorFromInteger(Wheel(colorWheel+=2)) : getColorFromInteger(color1);
             //else if(switch2) col = cheerLightsColor;
             setPixelColor(x,y,0,col);
             showPixels();
             delay(speed);
         }
     }
+	return 0;
 }
 
 /**
  * Assumes the four side planes are alrady drawn
  */
-int collapsingSides(Color col) {
+/*int collapsingSides(Color col) {
     int x, y, z;
     
     Color currentColor = getPixelColor(SIDE/2,0,0);
@@ -2839,7 +3404,8 @@ int collapsingSides(Color col) {
         showPixels();
         delay(speed);
     }
-}
+	return 0;
+}*/
 
 int effect_wormsqueeze (int size, int axis, int direction, int iterations, Color col) {
 	int x, y, i,j,k, dx, dy;
@@ -2867,7 +3433,8 @@ int effect_wormsqueeze (int size, int axis, int direction, int iterations, Color
 	
 		if(0 == shift(axis, direction)) return 0;
 		
-        if(switch1) col = getColorFromInteger(Wheel(startColor+=2));
+        //if(switch1) col = getColorFromInteger(Wheel(startColor+=2));
+        col = switch1 ? getColorFromInteger(Wheel(startColor+=2)) : getColorFromInteger(color1);
         //else if(switch2) col = cheerLightsColor;
 		for (j=0; j<size;j++) {
 			for (k=0; k<size;k++) {
@@ -2967,7 +3534,7 @@ int effect_planboing (int plane, Color col) {
 	uint8_t startColor = random(random(2, 256), random(2, 256));
 	for (i=0;i<SIDE;i++) {
 	    background(black);
-	    if(switch1) col = getColorFromInteger(Wheel(startColor+=4));
+	    col = switch1 ? getColorFromInteger(Wheel(startColor+=4)) : getColorFromInteger(color1);   //if(switch1) col = getColorFromInteger(Wheel(startColor+=4));
         //else if(switch2) col = cheerLightsColor;
 		setplane(plane, i, col);
         showPixels();
@@ -2978,7 +3545,7 @@ int effect_planboing (int plane, Color col) {
 	
 	for (i=7;i>=0;i--) {
 		background(black);
-		if(switch1) col = getColorFromInteger(Wheel(startColor+=4));
+		col = switch1 ? getColorFromInteger(Wheel(startColor+=4)) : getColorFromInteger(color1);   //if(switch1) col = getColorFromInteger(Wheel(startColor+=4));
         //else if(switch2) col = cheerLightsColor;
         setplane(plane,i, col);
         showPixels();
@@ -2991,7 +3558,7 @@ int effect_planboing (int plane, Color col) {
 }
 
 void setplane (char axis, unsigned char i, Color col) {
-    switch (axis)
+	switch (axis)
     {
         case AXIS_X:
             setplane_x(i, col);
@@ -3038,7 +3605,7 @@ int effect_telcstairs (int invert, int val, Color col) {
 	int x;
 	uint8_t startColor = random(random(2, 256), random(2, 256));
 	//background(black);
-	if(switch1) col = getColorFromInteger(Wheel(startColor+=2));
+	col = switch1 ? getColorFromInteger(Wheel(startColor+=2)) : getColorFromInteger(color1);   //if(switch1) col = getColorFromInteger(Wheel(startColor+=2));
     //else if(switch2) col = cheerLightsColor;
 	if(invert) {
 		for(x = SIDE*2; x >= 0; x--) {
@@ -3092,7 +3659,7 @@ int effect_axis_updown_randsuspend (char axis, int sleep, int invert, Color col)
 				positions[px]++;
 			}
 		}
-		if(switch1) col = getColorFromInteger(Wheel(startColor+=8));
+		col = switch1 ? getColorFromInteger(Wheel(startColor+=8)) : getColorFromInteger(color1);   //if(switch1) col = getColorFromInteger(Wheel(startColor+=8));
         //else if(switch2) col = cheerLightsColor;
         // Draw the positions and take a nap
 		if(0 == draw_positions_axis (axis, positions,invert,col)) {
@@ -3122,7 +3689,7 @@ int effect_axis_updown_randsuspend (char axis, int sleep, int invert, Color col)
     // Suspend the positions in mid-air for a while
 	delay(sleep);
 	
-	if(switch1) col = getColorFromInteger(Wheel(startColor+=8));
+	col = switch1 ? getColorFromInteger(Wheel(startColor+=8)) : getColorFromInteger(color1);   //if(switch1) col = getColorFromInteger(Wheel(startColor+=8));
     //else if(switch2) col = cheerLightsColor;
     // Then do the same thing one more time
 	for (i=0; i<SIDE; i++)	{
@@ -3166,7 +3733,7 @@ int effect_loadbar(int axis, Color col) {
 	//background(black);
 
 	for (i=0;i<SIDE;i++) {
-	    if(switch1) col = getColorFromInteger(Wheel(startColor+=4));
+	    col = switch1 ? getColorFromInteger(Wheel(startColor+=4)) : getColorFromInteger(color1);   //if(switch1) col = getColorFromInteger(Wheel(startColor+=4));
         //else if(switch2) col = cheerLightsColor;
     	setplane(axis,i,col);
         showPixels();
@@ -3202,7 +3769,7 @@ int effect_boxside_randsend_parallel (char axis, int origin, int mode, Color col
 	uint8_t pos[PIXELS_PER_PANEL];
 	
 	for (i=0;i<PIXELS_PER_PANEL;i++) {
-	    if(switch1) col = getColorFromInteger(Wheel(startColor+=4));
+	    col = switch1 ? getColorFromInteger(Wheel(startColor+=4)) : getColorFromInteger(color1);   //if(switch1) col = getColorFromInteger(Wheel(startColor+=4));
         //else if(switch2) col = cheerLightsColor;
 		pos[i] = 0;
 	}
@@ -3266,6 +3833,7 @@ int effect_boxside_randsend_parallel (char axis, int origin, int mode, Color col
         }
 		delay(speed*speedFactor);
 	}
+	return 0;
 }
 
 // Big ugly function :p but it looks pretty
@@ -3451,7 +4019,7 @@ int boingboing(uint16_t iterations, unsigned char mode, unsigned char drawmode, 
 		y = y + dy;
 		z = z + dz;
 		
-		if(switch1) col = getColorFromInteger(Wheel(startColor+=2));
+		col = switch1 ? getColorFromInteger(Wheel(startColor+=2)) : getColorFromInteger(color1);   //if(switch1) col = getColorFromInteger(Wheel(startColor+=2));
         //else if(switch2) col = cheerLightsColor;
 		if (drawmode == 0x01) {// show one voxel at time
 			setPixelColor(x,y,z,col);
@@ -3513,7 +4081,7 @@ int ripples (int iterations, Color col) {
     //background(black);
 
 	for (i=0;i<iterations;i++) {
-	    if(switch1) col = getColorFromInteger(Wheel(startColor+=2));
+	    col = switch1 ? getColorFromInteger(Wheel(startColor+=2)) : getColorFromInteger(color1);   //if(switch1) col = getColorFromInteger(Wheel(startColor+=2));
         //else if(switch2) col = cheerLightsColor;
 		for (x=0;x<SIDE;x++) {
 			for (z=0;z<SIDE;z++) {
@@ -3534,6 +4102,7 @@ int ripples (int iterations, Color col) {
 		else
 		    background(black);
 	}
+	return 0;
 }
 
 /*inline float Hill(float x) {
@@ -3600,7 +4169,7 @@ int linespin (int iterations, char axis, Color col) {
 	for (i=0;i<iterations;i++) {
 
 		//printf("Sin base %f \n",sin_base);
-        if(switch1) col = getColorFromInteger(Wheel(startColor+=2));
+        col = switch1 ? getColorFromInteger(Wheel(startColor+=2)) : getColorFromInteger(color1);   //if(switch1) col = getColorFromInteger(Wheel(startColor+=2));
         //else if(switch2) col = cheerLightsColor;
         
 		for (z = 0; z < SIDE; z++)	{
@@ -3644,6 +4213,7 @@ int linespin (int iterations, char axis, Color col) {
 		else
 		    background(black);
 	}
+	return 0;
 }
 
 int sinelines (int iterations, char axis, Color col) {
@@ -3654,7 +4224,7 @@ int sinelines (int iterations, char axis, Color col) {
     //transitionAll(black, POLAR);
 
 	for (i=0; i<iterations; i++) {
-	    if(switch1) col = getColorFromInteger(Wheel(startColor+=2));
+	    col = switch1 ? getColorFromInteger(Wheel(startColor+=2)) : getColorFromInteger(color1);   //if(switch1) col = getColorFromInteger(Wheel(startColor+=2));
         //else if(switch2) col = cheerLightsColor;
 		for (x=0; x<SIDE ;x++)	{
 			x_dividor = 2 + sin((float)i/100)+1;
@@ -3693,6 +4263,7 @@ int sinelines (int iterations, char axis, Color col) {
 		else
 		    background(black);
 	}
+	return 0;
 }
 
 int spheremove (int iterations, Color col) {
@@ -3710,7 +4281,7 @@ int spheremove (int iterations, Color col) {
 	int x, y, z, i;
 
 	for (i=0; i<iterations; i++) {
-	    if(switch1) col = getColorFromInteger(Wheel(startColor+=2));
+	    col = switch1 ? getColorFromInteger(Wheel(startColor+=2)) : getColorFromInteger(color1);   //if(switch1) col = getColorFromInteger(Wheel(startColor+=2));
         //else if(switch2) col = cheerLightsColor;
 		origin_x = 3.5+sin((float)i/50)*2.5;
 		origin_y = 3.5+cos((float)i/50)*2.5;
@@ -3739,6 +4310,7 @@ int spheremove (int iterations, Color col) {
 		else
 		    background(black);
 	}
+	return 0;
 }
 
 float distance3d (float x1, float y1, float z1, float x2, float y2, float z2) {	
@@ -3767,7 +4339,7 @@ int fireworks (int iterations, int n, Color col) {
 		origin_z = (rand()%2) + 5;
 
 		// shoot a particle up in the air
-		if(switch1) col = getColorFromInteger(Wheel(startColor+=2));
+		col = switch1 ? getColorFromInteger(Wheel(startColor+=2)) : getColorFromInteger(color1);   //if(switch1) col = getColorFromInteger(Wheel(startColor+=2));
         //else if(switch2) col = cheerLightsColor;
         
 		for (e=0;e<origin_z;e++) {
@@ -3798,7 +4370,7 @@ int fireworks (int iterations, int n, Color col) {
 
 		// explode
 		for (e=0; e<25; e++) {
-		    if(switch1) col = getColorFromInteger(Wheel(startColor+=2));
+		    col = switch1 ? getColorFromInteger(Wheel(startColor+=2)) : getColorFromInteger(color1);   //if(switch1) col = getColorFromInteger(Wheel(startColor+=2));
             //else if(switch2) col = cheerLightsColor;
 			slowrate = 1+tan((e+0.1)/20)*10;
 			
@@ -3823,6 +4395,7 @@ int fireworks (int iterations, int n, Color col) {
 		else
 		    background(black);
 	}
+	return 0;
 }
 
 /**
@@ -3875,9 +4448,9 @@ int randomPixelFill(uint32_t c) {
     for(i=0; i<strip.numPixels(); i++) {
         if(stop) {demo = FALSE; return 0;}
         if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return 0;}}
-        //if(switch1) {c = Wheel(random(random(2, 256), random(2, 256)));}
+        c = switch1 ? Wheel(random(random(2, 256), random(2, 256))) : color1;   //if(switch1) {c = Wheel(random(random(2, 256), random(2, 256)));}
         if(switch2) {
-            transitionOne(getColorFromInteger(c),pixelFillOrder[i],POLAR);
+            fadeInToColor(pixelFillOrder[i], getColorFromInteger(c));    //transitionOne(getColorFromInteger(c),pixelFillOrder[i],POLAR);
         }
         else {
             strip.setPixelColor(pixelFillOrder[i], c);
@@ -3910,7 +4483,7 @@ int CubePainter(String command) {
         }
         else if(command.charAt(beginIdx) == '#') {
     		// red
-    		drawingBuffer[voxelIdx] = hexToInt(command.charAt(beginIdx+1))*16+hexToInt(command.charAt(beginIdx+2));
+    		drawingBuffer[voxelIdx+0] = hexToInt(command.charAt(beginIdx+1))*16+hexToInt(command.charAt(beginIdx+2));
     		// green
     		drawingBuffer[voxelIdx+1] = hexToInt(command.charAt(beginIdx+3))*16+hexToInt(command.charAt(beginIdx+4));
     		// blue
@@ -3925,6 +4498,7 @@ int CubePainter(String command) {
                 drawingBuffer[i+0] = 0; // red
                 drawingBuffer[i+1] = 0; // green
                 drawingBuffer[i+2] = 0; // blue
+                
                 // Update the EEPROM storage area with EEPROM.write();
                 // We're not using EEPROM.put() due to huge performance impact in updating the cube
                 EEPROM.write(i+0, 0);   // red
@@ -4158,7 +4732,7 @@ void cheerlights(void) {
         	            transitionAll(col, POLAR);
         	            break;
         	        case 1:
-        	            color1 = color2 = color3 = color4 = c;
+        	            switch2 = switch3 = FALSE;
         	            colorZone(c, c, c, c, run);
         	            break;
         	        case 2:
@@ -4584,6 +5158,7 @@ void drawCube(Point topLeft, int side, Color col) {
 
 /** credit: Bill Marrs **/
 void whirlWind() {
+	const int arcs = 180; 
     run = TRUE;
     
     if (millis() - lastSwap > CYCLE_INTERVAL) {
@@ -4677,7 +5252,7 @@ void randomColor(struct Color *clr) {
 /*================================================*/
 
 //A colored Christmas light string that twinkles
-void christmasLights(void) {
+/*void christmasLights(void) {
     uint16_t i, f;
     int speedfactor = 12;    //increase the delay time
     run = TRUE;
@@ -4704,10 +5279,10 @@ void christmasLights(void) {
         showPixels();
         delay(speed*speedfactor);
     }
-}
+}*/
 
 /*** credit: Kevin's friggin' xmas tree - there, have it! **/
-void christmasTree(void) {
+/*void christmasTree(void) {
     int xOrigin = 3; 
     int yOrigin = 3;
     int speedfactor = 8;    //increase the delay time,
@@ -4824,9 +5399,9 @@ void christmasTree(void) {
     if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
     showPixels();
     delay(speed*speedfactor);
-}
+}*/
 
-void christmasWreath(uint32_t color1, uint32_t color2) {
+/*void christmasWreath(uint32_t color1, uint32_t color2) {
     double i;
     int j, k, l, m;
     int speedFactor = 2;    //increase the delay time
@@ -4902,7 +5477,7 @@ void christmasWreath(uint32_t color1, uint32_t color2) {
     	delay(speedFactor*speed);
     }
     brightness = currentBrightness;
-}
+}*/
 
 /* Trailing Rain Drops
  * @param c1 Selected rain drop color from the app
@@ -4913,10 +5488,10 @@ void rain(uint32_t c) {
     run = TRUE;
     
     //In case we don't have blank playing field yet, make it blank
-    if(isFirstLap) {
+    /*if(isFirstLap) {
         transitionAll(black, LINEAR);    //fadeToBlack();
         isFirstLap = FALSE;
-    }
+    }*/
 	
     //First lets move any drops that exist
     //Start at the bottom and look up each y-axis column
@@ -4954,8 +5529,21 @@ void rain(uint32_t c) {
         }
     }
     
+    // Do we want some lightning to go with the rain? ;-)
+    if(switch4) {
+        lastLightningInterval = lightningInterval;
+        if(millis() - lastLightning >= lightningInterval) {
+            lastLightning = millis();
+            srand(lastLightning);
+            do {
+                lightningInterval = oneMinuteInterval / random(24, 76);
+            }while(lastLightningInterval == lightningInterval);
+            lightning();
+        }
+    }
+    
+    // Slowly fade out previously-lit pixels to black, leaving a nice "trailing" effect
     if(switch2) {
-        //Then slowly fade out previously-lit pixels to black, leaving a nice "trailing" effect
         for(int x=0;x<SIDE;x++) {
             for(int z=0;z<SIDE;z++) {
                 for(int y=SIDE-1;y>=0;y--) {
@@ -4970,7 +5558,7 @@ void rain(uint32_t c) {
     }
     
     //Let's make some new drops at the top anywher from 5 to 15 at a time
-    int numRainDrops = random(5,16);
+    int numRainDrops = random(5,11);
     for(uint16_t i=0;i<numRainDrops;i++) {
         //We don't want to start a drop unless there are two black pixels at the top of the column
         //So let's look to see if it's possible to start the next drop
@@ -5003,6 +5591,38 @@ void rain(uint32_t c) {
     if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
     showPixels();
     delay(speed*speedfactor);
+}
+
+/** credit: Bill Marrs **/
+void lightning() {
+    Point p1 = { rand()%SIDE, SIDE-1, rand()%SIDE };
+    Point p2 = { rand()%SIDE, rand()%3, rand()%SIDE };
+    Point p3 = { rand()%4-2+p2.x, 0, rand()%4-2+p2.z };
+    Point p4 = { rand()%4-2+p2.x, 0, rand()%4-2+p2.z };
+    
+    Color clr[4];
+    clr[0] = Color(rand()%2, rand()%2, rand()%16);
+    clr[1] = Color(255, 255, 255);
+    clr[2] = Color(128, 128, 128);
+    clr[3] = Color(0, 0, 2);
+    
+    for (int i=0; i<4; i++) {
+        drawLine(p1, p2, clr[i]);
+        drawLine(p2, p3, clr[i]);
+        drawLine(p2, p4, clr[i]);
+        drawLine(p3, p4, clr[i]);
+        strip.show();
+        delay(random(1/speed, speed*.65));
+    }
+    delay(random(speed*.125, speed*.65));
+    drawLine(p1, p2, black);
+    drawLine(p2, p3, black);
+    drawLine(p2, p4, black);
+    drawLine(p3, p4, black);
+    
+	if(stop) {demo = FALSE; run = TRUE; return;}
+    if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
+    showPixels();
 }
 
 /* Inspired by Kevin's musically inclined work neighbor
@@ -5049,31 +5669,41 @@ uint8_t fadeLinear(float value) {
 
 int colorZone(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4, bool loop) {
     uint32_t maxColorPixel, increment;
-    Color col1 = ((switch2 || switch3) ? getColorFromInteger(Wheel(random(random(3, 256), random(3, 256)))) : getColorFromInteger(c1));
-    Color col2, col3, col4;
+	uint8_t colorWheel = random(random(3, 256), random(3, 256));
+    Color col1 = ((switch2 || switch3) ? getColorFromInteger(Wheel(colorWheel)) : getColorFromInteger(c1));
+    Color c, col2, col3, col4;
+    run = loop;
+	//ZONE mode Start and End Pixels
+	int zone1Start = 0;
+	int zone1End   = (PIXEL_CNT / 4) - 1;   //127
+	int zone2Start = zone1End + 1;          //128
+	int zone2End   = (zone2Start * 2) - 1;  //255
+	int zone3Start = PIXEL_CNT / 2;         //256
+	int zone3End   = zone3Start + zone1End; //383
+	int zone4Start = zone3End + 1;          //384
+	int zone4End   = PIXEL_CNT - 1;			//511
+	
     if(switch2) {
-		col2 = getColorFromInteger(Wheel(random(3, strip.Color(col1.red, col1.green, col1.blue)), 
-				random(strip.Color(col1.red, col1.green, col1.blue)+1, 256)));
-		col3 = getColorFromInteger(Wheel(random(3, strip.Color(col2.red, col2.green, col2.blue)), 
-				random(strip.Color(col2.red, col2.green, col2.blue)+1, 256)));
-		col4 = getColorFromInteger(Wheel(random(3, strip.Color(col3.red, col3.green, col3.blue)), 
-				random(strip.Color(col3.red, col3.green, col3.blue)+1, 256)));
+		col2 = getColorFromInteger(Wheel(colorWheel+=8));
+		col3 = getColorFromInteger(Wheel(colorWheel+=16));
+		col4 = getColorFromInteger(Wheel(colorWheel+=32));
     }
     if(switch3) {
-		col2 = getColorFromInteger(random(random(3, strip.Color(col1.red, col1.green, col1.blue)), 
-				random(strip.Color(col1.red, col1.green, col1.blue)+1, 256)));
-		col3 = getColorFromInteger(random(random(3, strip.Color(col2.red, col2.green, col2.blue)), 
-				random(strip.Color(col2.red, col2.green, col2.blue)+1, 256)));
-		col4 = getColorFromInteger(random(random(3, strip.Color(col3.red, col3.green, col3.blue)), 
-				random(strip.Color(col3.red, col3.green, col3.blue)+1, 256)));
+		Color compl2 = complement(col1);
+		Color compl3 = complement(col2);
+		Color compl4 = complement(col3);
+		col2 = getColorFromInteger(lerpColor(strip.Color(col1.red, col1.green, col1.blue), 
+				strip.Color(compl2.red, compl2.green, compl4.blue), getHighestValFromRGB(col1), 0, 255));
+		col3 = getColorFromInteger(lerpColor(strip.Color(col2.red, col2.green, col2.blue), 
+				strip.Color(compl3.red, compl3.green, compl4.blue), getHighestValFromRGB(col2), 0, 255));
+		col4 = getColorFromInteger(lerpColor(strip.Color(col3.red, col3.green, col3.blue), 
+				strip.Color(compl4.red, compl4.green, compl4.blue), getHighestValFromRGB(col3), 0, 255));
     }
 	if ((!switch2) && (!switch3)) {
 		col2 = getColorFromInteger(c2);
 		col3 = getColorFromInteger(c3);
 		col4 = getColorFromInteger(c4);
 	}
-    static Color c;
-    run = loop;
     
     maxColorPixel = getHighestValFromRGB(col1);
     increment = map(speed, 1, 120, maxColorPixel*.25, 5);
@@ -5140,7 +5770,17 @@ int colorZone(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4, bool loop) {
 
 //Creates 4 color zones, with each one having its own "chaser pixel"
 void colorZoneChaser(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4) {
-    static int idexZone1 = random(zone1Start, zone1End+1);  //zone1Start + (rand() % zone1End);
+	//ZONE mode Start and End Pixels
+	int zone1Start = 0;
+	int zone1End   = (PIXEL_CNT / 4) - 1;   //127
+	int zone2Start = zone1End + 1;          //128
+	int zone2End   = (zone2Start * 2) - 1;  //255
+	int zone3Start = PIXEL_CNT / 2;         //256
+	int zone3End   = zone3Start + zone1End; //383
+	int zone4Start = zone3End + 1;          //384
+	int zone4End   = PIXEL_CNT - 1;			//511
+    
+	static int idexZone1 = random(zone1Start, zone1End+1);  //zone1Start + (rand() % zone1End);
     static int idexZone2 = random(zone2Start, zone2End+1);  //zone2Start + (rand() % zone2End);
     static int idexZone3 = random(zone3Start, zone3End+1);  //zone3Start + (rand() % zone3End);
     static int idexZone4 = random(zone4Start, zone4End+1);  //zone4Start + (rand() % zone4End);
@@ -5311,6 +5951,10 @@ void pulse_oneColorAll(uint32_t color1) { //-PULSE BRIGHTNESS ON ALL LEDS TO ONE
 
 //Police light - red/blue strobo on each half of stripe
 void police_light_strobo() {
+	//ZONE mode Start and End Pixels
+	int zone1End   = (PIXEL_CNT / 4) - 1;   //127
+	int zone2Start = zone1End + 1;          //128
+	int zone2End   = (zone2Start * 2) - 1;  //255
     int middle = zone2End;
     static int color = 0;  
     static int left_right = 0;
@@ -5349,7 +5993,7 @@ void police_light_strobo() {
 }
 
 //Dual color chaser
-void twoColorChaser(uint32_t color1, uint32_t color2) { //-COLOR CHASER (TWO COLOR SINGLE LED)
+/*void twoColorChaser(uint32_t color1, uint32_t color2) { //-COLOR CHASER (TWO COLOR SINGLE LED)
     static int idex1 = random(zone1Start, zone2End+1);  //idex;
     static int idex2 = random(zone3Start, zone4End+1);  //antipodal_index(idexR);
     static bool bounce1 = false;
@@ -5410,13 +6054,17 @@ void twoColorChaser(uint32_t color1, uint32_t color2) { //-COLOR CHASER (TWO COL
         idex2 = zone4End-1;
         bounce2 = TRUE;
     }
-}
+}*/
 
 //Pulse all dots with pseudo-random colors
 void colorPulse() {
     uint32_t pulseRate;
+	uint32_t c1, c2;
 	run = TRUE;
-
+    
+    c1 = Wheel(random(random(2, 256), random(2, 256)));
+    c2 = Wheel(random(random(2, 256), random(2, 256)));
+    
     for(int j=0; j<=c2; j++) {
         for(int i=0; i<strip.numPixels(); i++) {
             pulseRate = abs(255-(speed+j));
@@ -5433,8 +6081,12 @@ void colorPulse() {
 //Fill the dots with patterns from colors interpolated between 2 random colors
 void cycleLerp() {
     uint32_t rate;
+	uint32_t c1, c2;
 	run = TRUE;
-
+    
+    c1 = Wheel(random(random(2, 256), random(2, 256)));
+    c2 = Wheel(random(random(2, 256), random(2, 256)));
+    
     for(int j=0; j<=c2; j++) {
         for(int i=0; i<strip.numPixels(); i++) {
             rate = abs(i-(speed+j));
@@ -5450,8 +6102,12 @@ void cycleLerp() {
 
 //Randomly fill the dots with colors interpolated between the 2 chosen colors
 void colorStripes() {
+	uint32_t c1, c2;
 	run = TRUE;
 
+    c1 = Wheel(random(random(2, 256), random(2, 256)));
+    c2 = Wheel(random(random(2, 256), random(2, 256)));
+    
     for(int j=0; j<=c2; j++) {
         if(stop) {return;}
         if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
@@ -5535,7 +6191,7 @@ void random_burst() { //-RANDOM INDEX/COLOR
 }
 
 //Theatre-style crawling lights with rainbow effect
-void theaterChaseRainbow(void) {
+/*void theaterChaseRainbow(void) {
 	run = TRUE;
 
     for (int j=0; j<256; j++) {     //cycle all 256 colors in the wheel
@@ -5550,12 +6206,12 @@ void theaterChaseRainbow(void) {
                 strip.setPixelColor(i+q, 0);    //turn every third pixel off
         }
     }
-}
+}*/
 
 //Fade from teal to blue to purple then back to blue then teal, repeat
 //Random snowflakes twinkle white for random amounts of time 
 //The snowflakes will hang around no faster than MIN_DELAY and no slower than MAX_DELAY
-void frozen(void) {
+/*void frozen(void) {
     uint32_t startColor = 140;  //Hue for teal
     uint32_t stopColor  = 210;  //Hue for purple
     const int MIN_DELAY = 400;  //in ms
@@ -5651,7 +6307,7 @@ void findRandomSnowFlakesPositions(int numFlakes) {
             }
         }
     }
-}
+}*/
 
 //Color Blender
 //Red starts at 1 end and green at the other. They increment towards each other. 
@@ -5788,6 +6444,23 @@ Color fadeColor(Color col, float scaleFactor) {
     return col;
 }
 
+/** Fade out all voxels to black
+  @param scaleFactor is a percentage of the current color in decimal form, i.e 0.125 */
+void fadeSmooth(char lowerLim, char upperLim, float scaleFactor) {
+    for(int x=0;x<SIDE;x++)
+        for(int y=lowerLim;y<upperLim;y++)
+            for(int z=0;z<SIDE;z++) {
+                Color voxelColor=getPixelColor(x,y,z);
+                if(voxelColor.red > 0) voxelColor.red-=voxelColor.red*scaleFactor;
+                //voxelColor.red=constrain(voxelColor.red*scaleFactor, 0, brightness);
+                if(voxelColor.green > 0) voxelColor.green-=voxelColor.green*scaleFactor;
+                //voxelColor.green=constrain(voxelColor.green*scaleFactor, 0, brightness);
+                if(voxelColor.blue > 0) voxelColor.blue-=voxelColor.blue*scaleFactor;
+                //voxelColor.blue=constrain(voxelColor.blue*scaleFactor, 0, brightness);
+                setPixelColor(x,y,z, voxelColor);   
+            }
+}
+
 Color complement(Color original) {
   float R = original.red;
   float G = original.green;
@@ -5904,9 +6577,9 @@ float randomDecimal() {
   return static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
 }
 
-float radius(float x, float y, float z) {
+/*float radius(float x, float y, float z) {
   return sqrt(pow(center.x - x, 2) + pow(center.z - z, 2));
-}
+}*/
 
 //Checks to see if it's any gradient of white
 bool isWhiteColor(Color col) {
@@ -5915,6 +6588,10 @@ bool isWhiteColor(Color col) {
 
 /** Find index of antipodal opposite LED **/
 int antipodal_index(int i) {
+	//ZONE mode Start and End Pixels
+	int zone1End   = (PIXEL_CNT / 4) - 1;   //127
+	int zone2Start = zone1End + 1;          //128
+	int zone2End   = (zone2Start * 2) - 1;  //255
     int iN = i + zone2End;
     if (i >= zone2End)
         iN = ( i + zone2End ) % PIXEL_CNT; 
@@ -6092,8 +6769,8 @@ std::string padTo(std::string str, const size_t num, const char paddingChar) {
 }
 
 //Spark Cloud Mode
-//Expect a string like thisto change the mode Mode: M:ZONE,W:30,B:120,C1:002BFF,C2:FF00DB,C3:FF4600,C4:23FF00,
-//Or simply this to just update speed or brightness:        W:30,B:120,
+//Expect a string like thisto change the mode Mode: M:ZONE,S:30,B:120,C1:002BFF,C2:FF00DB,C3:FF4600,C4:23FF00,
+//Or simply this to just update speed or brightness:        S:30,B:120,
 //Received command should have an ending comma, it makes this code easier
 //All colors are in hex format
 //If the mode Mode is changing, return the enum value of the mode
@@ -6108,7 +6785,13 @@ int SetMode(String command) {
     bool isNewMode = FALSE;
 	bool isNewSpeed = FALSE;
 	bool isNewBrightness = FALSE;
-    
+    bool isNewColor = FALSE;
+    bool isNewSwitch = FALSE;
+	/* ========================== SetMode return  Defines  ========================== */
+	const int NO_CHANGE		 = 1000;
+	const int BRIGHTNESS_SET = 1001;
+	const int SPEED_SET		 = 1002;
+
     // Trim extra spaces
     command.trim();
     // Convert it to upper-case for easier matching
@@ -6123,6 +6806,7 @@ int SetMode(String command) {
 		if(command.charAt(beginIdx) == 'M') {
 			//set the new mode from modeStruct array index
 			returnValue = setNewMode(getModeIndexFromName(command.substring(beginIdx+2, idx).c_str())); 
+    		if(currentModeID == IFTTTWEATHER) {lastDemo = demo;}
 			isNewMode = TRUE;
 		}
 		else if(command.charAt(beginIdx) == 'S') {
@@ -6136,33 +6820,46 @@ int SetMode(String command) {
 			if(isNewSpeed) {
     			speedIndex = receivedSpeedValue;
     			speed = speedPresets[speedIndex];
+        		// Update the EEPROM storage area
+        		EEPROM.write(SPEED_START_ADDR, speedIndex);
 			}
 		}
 		else if(command.charAt(beginIdx) == 'B') {
 		    int newBrightness = command.substring(beginIdx+2, idx).toInt() * (255 * .01);	//Scale 0-100 to 0-255
 			if(brightness != newBrightness) {isNewBrightness = TRUE;}
-			if(isNewBrightness) brightness = newBrightness > 0 ? newBrightness : 1;
+			if(isNewBrightness) {
+			    brightness = newBrightness > 0 ? newBrightness : 1;
+        		// Update the EEPROM storage area
+        		EEPROM.write(BRIGHT_START_ADDR, brightness);
+            }
 		}
         else if(command.charAt(beginIdx) == 'C') {
             char * p;
+			isNewColor = TRUE;
             switch(command.charAt(beginIdx+1)) {
                 case '1':
                     color1 = strtoul( command.substring(beginIdx+3, idx).c_str(), & p, 16 );  //Convert hex string to int
+					lastColors[0] = color1;
                     break;
                 case '2':
                     color2 = strtoul( command.substring(beginIdx+3, idx).c_str(), & p, 16 );  //Convert hex string to int
+					lastColors[1] = color2;
                     break;
                 case '3':
                     color3 = strtoul( command.substring(beginIdx+3, idx).c_str(), & p, 16 );  //Convert hex string to int
+					lastColors[2] = color3;
                     break;
                 case '4':
                     color4 = strtoul( command.substring(beginIdx+3, idx).c_str(), & p, 16 );  //Convert hex string to int
+					lastColors[3] = color4;
                     break;
                 case '5':
                     color5 = strtoul( command.substring(beginIdx+3, idx).c_str(), & p, 16 );  //Convert hex string to int
+					lastColors[4] = color5;
                     break;
                 case '6':
                     color6 = strtoul( command.substring(beginIdx+3, idx).c_str(), & p, 16 );  //Convert hex string to int
+					lastColors[5] = color6;
                     break;
             }
 		}
@@ -6177,6 +6874,7 @@ int SetMode(String command) {
 		// T for Toggle switch - expect 0 or 1 for false or true
 		// S for Switch would have made more sense, but want to keep this backwards compatible and S is alreay Speed
 		else if(command.charAt(beginIdx) == 'T') { 
+            isNewSwitch = TRUE;
             switch(command.charAt(beginIdx+1)) {
                 case '1':
                     switch1 = command.substring(beginIdx+3, idx).toInt() & 1;
@@ -6200,6 +6898,10 @@ int SetMode(String command) {
 		idx = command.indexOf(',', beginIdx);
 	}
 
+    // Update the EEPROM storage area; EEPROM.put() only updates as necessary
+    if(isNewColor) {EEPROM.put(COLORS_START_ADDR, lastColors);}
+    if(isNewSwitch) {EEPROM.put(SWITCHES_START_ADDR, lastSwitchState);}
+	
 	//Set the flags if it's a new mode
 	//Need this when just updating speed and brightness so a currently running mode doesn't start over
     if(isNewMode) {
@@ -6274,6 +6976,42 @@ int FnRouter(String command) {
         tHour = Time.hour();
         return timeZone;
     }
+    else if(command.substring(beginIdx, colonIdx)=="GETSWITCHSTATE") {
+		//Expect a string like this: GETSWITCHSTATE:1
+        int id = command.substring(colonIdx+1).toInt();
+        switch(id) {
+            case 1:
+                return (switch1 ? 1 : 0);
+            case 2:
+                return (switch2 ? 1 : 0);
+            case 3:
+                return (switch3 ? 1 : 0);
+            case 4:
+                return (switch4 ? 1 : 0);
+            default:
+                return -1;
+        }
+    }
+    else if(command.substring(beginIdx, colonIdx)=="GETCOLOR") {
+		//Expect a string like this: GETCOLOR:1
+        int id = command.substring(colonIdx+1).toInt();
+        switch(id) {
+            case 1:
+                return color1;
+            case 2:
+                return color2;
+            case 3:
+                return color3;
+            case 4:
+                return color4;
+            case 5:
+                return color5;
+            case 6:
+                return color6;
+            default:
+                return -1;
+        }
+    }
 	else if(command.substring(beginIdx, colonIdx)=="SETAUXSWITCH") {
 		//Expect a string like this: SETAUXSWITCH:1,0;
 		//That breaks down to: SwitchID,state;
@@ -6283,8 +7021,15 @@ int FnRouter(String command) {
 		int id = 0;
 		while(semiColonIdx != -1) {
 			id = (int) command.substring(beginIdx, commaIdx).toInt();
-			bool state = command.substring(commaIdx+1,semiColonIdx).equals("1") ? true : false;
+			bool state = command.substring(commaIdx+1,semiColonIdx).equals("1") ? TRUE : FALSE;
 			auxSwitchStruct[getAuxSwitchIndexFromID(id)].auxSwitchState = state;
+			
+			// Update EEPROM storage area
+			int START_ADDRESS = AUXSW_START_ADDR + (id * (sizeof(uint8_t) + 1));
+			if(EEPROM.length() >= (START_ADDRESS + sizeof(uint8_t)))
+			    EEPROM.write(START_ADDRESS, state ? 1 : 0);
+            else 
+                sprintf(debug,"Warning: EEPROM has reached max size limit; %s not updated", auxSwitchStruct[getAuxSwitchIndexFromID(id)].auxSwitchTitle);
 			
 			beginIdx = semiColonIdx + 1;
 			commaIdx = command.indexOf(',', beginIdx);
@@ -6338,8 +7083,17 @@ int SetText(String command) {
 
 //Change Mode based on the modeStruct array index
 int setNewMode(int newModeIndex) {
-    lastModeID = currentModeID;
+    // We don't want to switch the cube to a IFTTT alert even when it's set, when the cube
+    // is in CUBE PAINTER or LISTENER modes, to keep from disrupting the user experience
+    if((currentModeID == CUBE_PAINTER || currentModeID == LISTENER) && modeStruct[newModeIndex].modeId == IFTTTWEATHER) 
+        return getModeIndexFromID(currentModeID);
+    
+    if(currentModeID != IFTTTWEATHER && currentModeID != STANDBY) {previousModeID = currentModeID;}
     currentModeID = modeStruct[newModeIndex].modeId;
+    
+    // Update the EEPROM storage area
+    if(currentModeID != IFTTTWEATHER && currentModeID != STANDBY) {EEPROM.write(LASTMODE_START_ADDR, currentModeID);}
+    
     sprintf(currentModeName,"%s", modeStruct[newModeIndex].modeName);
 	resetVariables(modeStruct[newModeIndex].modeId);
   	//fadeToBlack();
@@ -6372,7 +7126,13 @@ int getAuxSwitchIndexFromID(int id) {
 }
 
 void listen() {
-    static char data[EXPECTED_PACKET_SIZE];
+	//some tpm2.net constants
+	//const char TPM2NET_HEADER_IDENT    = 0x9C;
+	//const char TPM2NET_CMD_DATAFRAME   = 0xDA;
+	//const char TPM2NET_CMD_COMMAND     = 0xC0;
+	//const char TPM2NET_CMD_ANSWER      = 0xAC;
+	//const char TPM2NET_FOOTER_IDENT    = 0x36;
+	//const char TPM2NET_PACKET_TIMEOUT  = 0xFA;	// 1/4 of a second
     run = TRUE;
     
     // Checks for the presence of a UDP packet, and reports the buffer size
@@ -6382,8 +7142,8 @@ void listen() {
     /*------------------*/
     // Do we have sufficient data in the buffer yet?
     if(bytes != EXPECTED_PACKET_SIZE) {
-        // Nope - let's hold for another 100 attempts
-        if(countdown < 100) 
+        // Nope - let's hold for another 500 attempts
+        if(countdown < 500) 
             countdown++;
         else {
             // No luck, then let's refresh the buffer
@@ -6404,8 +7164,8 @@ void listen() {
         /*------------------*/
         // Do we have correct tpm2.net data in the buffer?
         if(data[0] != TPM2NET_HEADER_IDENT) {   // Block Type: Block Start Byte
-            // Nope - let's hold for another 100 attempts
-            if(countdown < 100) 
+            // Nope - let's hold for another 500 attempts
+            if(countdown < 500) 
                 countdown++;
             else {
                 // No luck, then let's refresh the buffer
@@ -6426,8 +7186,8 @@ void listen() {
                     //demo = FALSE;
                 }
                 else {
-                    // Nope - let's hold for another 100 attempts
-                    if(countdown < 100) 
+                    // Nope - let's hold for another 500 attempts
+                    if(countdown < 500) 
                         countdown++;
                     else {
                         // No luck, then let's refresh the buffer
@@ -6454,9 +7214,9 @@ void listen() {
                 int voxelIdx = TPM2NET_HEADER_SIZE; // We set the index pointer to the first frame byte
 
                 // Start drawing!!
-                for(int z = NR_OF_PANELS-1; z >= 0; z--) {                  // We're only dealing in 2 dimensions (width & height)
-                    for(int col = 0; col < NR_OF_PANELS; col++) {           // Linewise, starting from leftmost index
-                        for(int row = NR_OF_PANELS - 1; row >= 0; row--) {  // Columnwise, starting from topmost index
+                for(int z = SIDE-1; z >= 0; z--) {                  // We're only dealing in 2 dimensions (width & height)
+                    for(int col = 0; col < SIDE; col++) {           // Linewise, starting from leftmost index
+                        for(int row = SIDE - 1; row >= 0; row--) {  // Columnwise, starting from topmost index
                             Color pixelColor = Color(data[voxelIdx], data[voxelIdx + 1], data[voxelIdx + 2]);  // Take 3 color bytes from buffer
                             setPixelColor(z, col, row, pixelColor);
                         }
@@ -6470,6 +7230,7 @@ void listen() {
                             return;
                         }
                     }
+                    //delay(z*random(36));
                 }
                 // Display!!
                 /** GLEDiaTor always sends totalPackets > packetNumber and never updates packetNumber,
@@ -6519,21 +7280,30 @@ void FFTJoy() {
         if(imaginary[i]>maxVal)
             maxVal=imaginary[i];
     }
+        
+    sprintf(debug,"%f", maxVal);
+    /* We try to keep the baseline reading at 450.0 when idle;                          *
+     * when peaking, readings can get upwards from 1000.0 to 1200.0 (clipping occurs);  *
+     * maxVal is constantly adjusted to keep mean readings within optimal capture range */
+    if(maxVal>=650) maxVal-=maxVal*0.0625;      // As maxVal gets too high, cube starts not picking up any signals
+    if(maxVal<650 && maxVal>450) maxVal-=0.3;   // This is the range where audio capture and display is optimal
+    if(maxVal<=450) maxVal+=0.5;                // We cutoff maxVal to keep from clipping due to excess peaking
 
     for(int i=0; i<pow(2,M)/2; i++) {
         imaginary[i]=SIDE*imaginary[i]/maxVal;
         Color pixelColor;
         int y, pixIdx, pixUppIdx, pixLowIdx;
     	for(y=0; y<=imaginary[i]; y++) {
-          	pixelColor=getColorFromInteger(colorMap(y,0,SIDE+2));
+            pixelColor=y<SIDE-1 ? getColorFromInteger(colorMap(y,0,SIDE+2)) : Color(191,0,15);
+          	//pixelColor=getColorFromInteger(colorMap(y,0,SIDE+2));
           	pixIdx=(((SIDE-1)*SIDE*SIDE) + (i*SIDE) + y);
             strip.setPixelColor(pixIdx, strip.Color(pixelColor.red, pixelColor.green, pixelColor.blue));
-    		if(dotMode && switch2) {
+    		if(switch2) {
     		    //Down-top fade/blanking
                 pixelColor=black;
                 pixLowIdx=pixIdx-(pixIdx%SIDE);
                 for(int j=pixLowIdx; j<pixIdx; j++) {
-                    if(smooth && switch1) {
+                    if(switch1) {
                         pixelColor=getPixelColor(j);
                         //This causes a nice and smooth 'trailing' effect
                       	//from the base of the cube (y-axis) towards the peak
@@ -6545,12 +7315,12 @@ void FFTJoy() {
                 }
             }
     	}
-    	
+        
         //Topdown fade/blanking
         pixelColor=black;
         pixUppIdx=pixIdx+(SIDE-(pixIdx%SIDE));
         for(int j=pixUppIdx-1; j>pixIdx; j--) {
-            if(smooth && switch1) {
+            if(switch1) {
                 pixelColor=getPixelColor(j);
               	//This causes a nice and smooth 'trailing' effect
               	//from the top of the cube (y-axis) towards the peak
@@ -6562,13 +7332,18 @@ void FFTJoy() {
         }
     }
     
+    /*if(maxVal>=700) 
+        maxVal-=maxVal*0.125;
+    if(maxVal<=200 && maxVal>=100)
+        maxVal-=0.25;*/
+
     //Fade the 'trail' to black over the length of the cube's z-axis
     for(int x=0; x<SIDE; x++)
         for(int y=0; y<SIDE; y++)
             for(int z=0; z<SIDE-1; z++) {
                 int pixIdx=((z+1)*SIDE*SIDE) + (x*SIDE) + y;
                 Color trailColor=getPixelColor(pixIdx);
-                if(smooth && switch1) {
+                if(switch1) {
                   	//This is responsible for the 'meteors' shooting towards the back of 
                   	//the cube; otherwise it would look like they were 'going backwards'
                     if(trailColor.red > 0) trailColor.red-=trailColor.red*(map(z%SIDE, 0, SIDE-1, 1, SIDE-1)*.05); //.125;
@@ -6581,7 +7356,8 @@ void FFTJoy() {
                 delayMicroseconds(speed);  //introducing a little bit of delay to 'smoothen-out' transitions
             }
     
-    maxVal= (maxVal>=120) ? maxVal-2 : (maxVal<8) ? 8 : maxVal-.8;
+    //maxVal= (maxVal>=120) ? maxVal-2 : (maxVal<8) ? 8 : maxVal-.8;
+
     if(stop) {demo = FALSE; strip.setBrightness(brightness); return;}
     if(demo) {
         if(millis() - lastModeSet > twoMinuteInterval) {strip.setBrightness(brightness); return;}
@@ -6592,13 +7368,13 @@ void FFTJoy() {
     else {showPixels();}
 }
 
-void smoothSwitch() {
+/*void smoothSwitch() {
     smooth = !digitalRead(SMOOTH_SW);
 }
 
 void modeButton() {
     dotMode = !dotMode;
-}
+}*/
 
 void initMicrophone() {
     pinMode(GAIN_CONTROL, OUTPUT);
@@ -6678,15 +7454,32 @@ short FFT(short int dir,int m,float *x,float *y) {
 
 /* ============================== Text functions ============================== */
 void showText(uint32_t color1, uint32_t color2) {
-    switch(whichTextMode) {
+	uint32_t c1, c2;
+	c1 = color1;
+	c2 = color2;
+  	
+	if (switch4) {  //BG
+		if (currentBg == nextBg)
+			nextBg = rand()%256;
+		else if (nextBg > currentBg)
+			currentBg++;
+		else
+			currentBg--;
+
+		c1 = Wheel(currentBg);
+		Color bg = complement(getColorFromInteger(c1));
+		c2 = strip.Color(bg.red, bg.green, bg.blue);
+    }
+    
+	switch(whichTextMode) {
         case 0:
-            textSpin(color1, color2);
+            textSpin(c1, c2);
             break;
         case 1:
-            textMarquee(color1, color2);
+            textMarquee(c1, c2);
             break;
         case 2:
-            textScroll(color1, color2);
+            textScroll(c1, c2);
             break;
     }
 }
@@ -6767,7 +7560,7 @@ void textMarquee(uint32_t color1, uint32_t color2) {
 void showChar(char a, Point p, Color col) {
     for(int row=0; row<SIDE; row++)
         for(int bit=0; bit<8; bit++)
-            if(((fontTable[((int)a)*8+row]>>(7-bit))&0x01)==1)
+			if(((fontTable[((int)a)*8+row]>>(7-bit))&0x01)==1)
                 for(int th=0; th<thickness+1; th++)
                     setPixelColor(p.x+bit, p.y+(SIDE-1-row), p.z-th, col);
 }
@@ -6779,7 +7572,7 @@ void showChar(char a, Point origin, Point angle, Color col) {
 void showChar(char a, Point origin, Point pivot, Point angle, Color col) {
     for(int row=0; row<SIDE; row++)
         for(int bit=0; bit<8; bit++)
-            if(((fontTable[((int)a)*8+(7-row)]>>(7-bit))&0x01)==1)
+			if(((fontTable[((int)a)*8+(7-row)]>>(7-bit))&0x01)==1)
                 for(int th=0; th<thickness+1; th++)
                     setPixelColor(origin.x+((float)bit-pivot.x)*cos(angle.y)-th, 
                     origin.y+((float)row-pivot.y)*cos(angle.x), 
@@ -6804,7 +7597,7 @@ void marquee(String text, float pos, Color col) {
 void showMarqueeChar(char a, int pos, Color col) {
     for(int row=0; row<SIDE; row++)
         for(int bit=0; bit<8; bit++)
-            if(((fontTable[((int)a)*8+row]>>(7-bit))&0x01)==1) {
+			if(((fontTable[((int)a)*8+row]>>(7-bit))&0x01)==1) {
                 for(int th=0; th<thickness+1; th++) {
                     if((pos-bit)<SIDE)
                         setPixelColor(SIDE-1-th, SIDE-1-row, pos-bit, col);
@@ -6820,8 +7613,10 @@ void showMarqueeChar(char a, int pos, Color col) {
 
 /* ============================ Squarral functions ============================ */
 void squarral() {
-    int posX, posY, posZ;
-    int incX, incY, incZ;
+	//const uint8_t TRAIL_LENGTH = 50;
+	//Point trailPoints[TRAIL_LENGTH];
+    //int posX, posY, posZ;
+    //int incX, incY, incZ;
     Color voxelColor;
     run = TRUE;
     
@@ -6859,7 +7654,7 @@ void squarral() {
             squarral_zInc*=-1;
             if(squarral_zInc==1) {
                 axis=rand()%6;
-                if(rand()%5==0)
+                if(rand()%3==0)
                     rainbowColor=TRUE;
                 else
                     rainbowColor=FALSE;
@@ -6867,13 +7662,13 @@ void squarral() {
         }
     }
     
-    posX=position.x;
+    /*posX=position.x;
     posY=position.y;
     posZ=position.z;
     
     incX=increment.x;
     incY=increment.y;
-    incZ=increment.z;
+    incZ=increment.z;*/
     
     for(int i=TRAIL_LENGTH-1;i>0;i--) {
         trailPoints[i].x=trailPoints[i-1].x;
