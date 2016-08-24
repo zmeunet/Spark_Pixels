@@ -434,7 +434,7 @@ modeParams modeStruct[] =
     /*     modeId                       modeName                #Colors     #Switches   textInput
      *     --------------- 	            ---------------	        ---------   ---------   --------- */
         {  STANDBY,                     "OFF",                  0,          0,      FALSE   },  //credit: Kevin Carlborg
-        {  NORMAL,                      "LIGHT",                0,          0,      FALSE   },  //credit: Kevin Carlborg
+        {  NORMAL,                      "LAMP",			0,          0,      FALSE   },  //credit: Kevin Carlborg
         {  ACIDDREAM,                   "ACID DREAM",           0,          0,      FALSE   },  //credit: Werner Moecke
         {  ACIDRAIN,                    "ACID RAIN",            0,          1,      FALSE   },  //credit: Werner Moecke (inspired by Kevin Darrah's "Rain" and based on Alex Hornstein's "Purple Rain")
         {  BITCLOCK,                    "BIT CLOCK",            4,          4,      FALSE   },  //credit: "lapentab", Werner Moecke (Processing language (java) to C++ conversion)
@@ -1295,7 +1295,7 @@ void setup() {
     autoShutOff = FALSE;		//Initialize auto shut off mode variable
 	rememberLastMode = FALSE;	//Initialize remember last mode variable*/
     reboot = FALSE;				//Initialize reboot request flag variable
-	defaultColor = strip.Color(0xfd, 0xf5, 0xe6);   //This seems closer to incandescent color
+	defaultColor = strip.Color(0xFF, 0xE6, 0x9B);   //This seems closer to incandescent color
 	//snowFlakeColor = getColorFromInteger(0xFFFFFF);
     //c1 = Wheel(random(random(2, 256), random(2, 256)));
     //c2 = Wheel(random(random(2, 256), random(2, 256)));
