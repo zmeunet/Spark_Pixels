@@ -434,7 +434,7 @@ modeParams modeStruct[] =
     /*     modeId                       modeName                #Colors     #Switches   textInput
      *     --------------- 	            ---------------	        ---------   ---------   --------- */
         {  STANDBY,                     "OFF",                  0,          0,      FALSE   },  //credit: Kevin Carlborg
-        {  NORMAL,                      "LAMP",			0,          0,      FALSE   },  //credit: Kevin Carlborg
+        {  NORMAL,                      "LAMP",					0,          0,      FALSE   },  //credit: Kevin Carlborg
         {  ACIDDREAM,                   "ACID DREAM",           0,          0,      FALSE   },  //credit: Werner Moecke
         {  ACIDRAIN,                    "ACID RAIN",            0,          1,      FALSE   },  //credit: Werner Moecke (inspired by Kevin Darrah's "Rain" and based on Alex Hornstein's "Purple Rain")
         {  BITCLOCK,                    "BIT CLOCK",            4,          4,      FALSE   },  //credit: "lapentab", Werner Moecke (Processing language (java) to C++ conversion)
@@ -1295,7 +1295,7 @@ void setup() {
     autoShutOff = FALSE;		//Initialize auto shut off mode variable
 	rememberLastMode = FALSE;	//Initialize remember last mode variable*/
     reboot = FALSE;				//Initialize reboot request flag variable
-	defaultColor = strip.Color(0xFF, 0xE6, 0x9B);   //This seems closer to incandescent color
+	defaultColor = strip.Color(0xFF, 0xE6, 0x9B);   //strip.Color(0xfd, 0xf5, 0xe6);   //This seems closer to incandescent color
 	//snowFlakeColor = getColorFromInteger(0xFFFFFF);
     //c1 = Wheel(random(random(2, 256), random(2, 256)));
     //c2 = Wheel(random(random(2, 256), random(2, 256)));
@@ -2225,7 +2225,7 @@ void checkMicrohpone() {
 		if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
 	}
   	runningAverage/=NUM_SAMPLES;
-  	sprintf(debug,"%f", maxVal);
+  	//sprintf(debug,"%f", maxVal);
     /* We try to keep the baseline reading at 450.0 when idle;                          *
      * when peaking, readings can get upwards from 1000.0 to 1200.0 (clipping occurs);  *
      * maxVal is constantly adjusted to keep mean readings within optimal capture range */
@@ -4659,11 +4659,11 @@ void cheerlights(void) {
             client.println("Content-Length: 0");
             client.println();
           	// DEBUG
-            sprintf(debug, "connected");
+            //sprintf(debug, "connected");
         }
         else {
           	// DEBUG
-            sprintf(debug, "not connected");
+            //sprintf(debug, "not connected");
           
             if(stop) {demo = FALSE; client.stop(); return;}
             if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {client.stop(); return;}}
@@ -4709,7 +4709,7 @@ void cheerlights(void) {
     			lastChar=thisChar;  
     		}
           	// DEBUG
-            itoa(client.available(), debug, 10);
+            //itoa(client.available(), debug, 10);
     	}
 
         //if there's a valid hex color string from Cheerlights, update the color
@@ -4753,11 +4753,11 @@ void cheerlights(void) {
         	    }
     	    }
           	// DEBUG
-            sprintf(debug, response);
+            //sprintf(debug, response);
         }
         else {
           	// DEBUG
-            sprintf(debug, "no reply from host");
+            //sprintf(debug, "no reply from host");
           	
             if(stop) {demo = FALSE; client.stop(); return;}
             if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {client.stop(); return;}}
@@ -6167,7 +6167,7 @@ void random_burst() { //-RANDOM INDEX/COLOR
     idex = random(PIXEL_CNT);
     ihue = random(2, 256);
     
-    ///DEBUG: sprintf(debug,"pixelCount = %i, isAllFilled = %i", pixelCount, isAllFilled);
+    //DEBUG: sprintf(debug,"pixelCount = %i, isAllFilled = %i", pixelCount, isAllFilled);
     if(stop) {demo = FALSE; return;}
     if(demo) {if(millis() - lastModeSet > twoMinuteInterval) {return;}}
 
@@ -7281,7 +7281,7 @@ void FFTJoy() {
             maxVal=imaginary[i];
     }
         
-    sprintf(debug,"%f", maxVal);
+    //sprintf(debug,"%f", maxVal);
     /* We try to keep the baseline reading at 450.0 when idle;                          *
      * when peaking, readings can get upwards from 1000.0 to 1200.0 (clipping occurs);  *
      * maxVal is constantly adjusted to keep mean readings within optimal capture range */
